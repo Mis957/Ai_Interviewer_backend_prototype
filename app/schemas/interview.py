@@ -1,0 +1,67 @@
+from typing import List, Optional, Any, Dict
+from datetime import datetime
+from pydantic import BaseModel, ConfigDict, Field
+
+class InterviewStartRequest(BaseModel):
+    user_id: Optional[str] = Field("candidate_123", description="Candidate ID")
+    technology: str = Field("Python", description="Technology track (Python, Java, DBMS, etc.)")
+    initial_difficulty: str = Field("Easy", description="Initial question difficulty")
+
+class NextQuestionPayload(BaseModel):
+    question_id: Optional[str] = None
+    generated_question_id: Optional[str] = None
+    technology: str
+    topic: str
+    difficulty: str
+    question_text: str
+    audio_url: Optional[str] = None
+    is_llm_generated: bool = False
+
+class InterviewStartResponse(BaseModel):
+    session_id: str
+    user_id: str
+    technology: str
+    status: str
+    current_difficulty: str
+    first_question: NextQuestionPayload
+
+class SubmitAnswerRequest(BaseModel):
+    session_id: str
+    question_id: Optional[str] = None
+    generated_question_id: Optional[str] = None
+    candidate_answer: str = Field(..., description="Transcribed text or directly typed answer")
+
+class GeminiEvalOutput(BaseModel):
+    score: float = Field(..., ge=0.0, le=10.0, description="Evaluation score 0-10")
+    feedback: str = Field(..., description="Qualitative evaluation feedback")
+    missing_topics: List[str] = Field(default_factory=list, description="Topics/concepts missed by candidate")
+    next_difficulty: str = Field(..., description="Recommended difficulty for next question")
+
+class AnswerEvaluationResponse(BaseModel):
+    answer_id: str
+    session_id: str
+    score: float
+    feedback: str
+    missing_topics: List[str]
+    current_difficulty: str
+    next_difficulty: str
+    next_question: Optional[NextQuestionPayload] = None
+    session_completed: bool = False
+
+class LearningRoadmapItem(BaseModel):
+    topic: str
+    action_item: str
+    recommended_resource: Optional[str] = None
+
+class FinalReportResponse(BaseModel):
+    session_id: str
+    technology: str
+    questions_answered: int
+    technical_score: float
+    communication_score: float
+    confidence_rating: float
+    strong_topics: List[str]
+    weak_topics: List[str]
+    overall_feedback: str
+    learning_roadmap: List[LearningRoadmapItem]
+    detailed_history: List[Dict[str, Any]]

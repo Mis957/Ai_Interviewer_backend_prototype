@@ -1,0 +1,13 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+sqlalchemy>=2.0.28
+pydantic>=2.6.4
+pydantic-settings>=2.2.1
+google-genai>=0.1.1
+google-generativeai>=0.4.1
+edge-tts>=6.1.9
+python-multipart>=0.0.9
+psycopg2-binary>=2.9.9
+asyncpg>=0.29.0
+python-dotenv>=1.0.1
+openai-whisper>=20231117; sys_platform != "win32" or python_version < "3.12"
