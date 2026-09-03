@@ -1,0 +1,47 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Python
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# SQLite Database
+*.db
+*.sqlite3
+
+# Audio storage & dynamic files
+audio_storage/
+*.mp3
+*.wav
+
+# Frontend / Node.js
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.svelte-kit/
+frontend/build/
+.npm
+*.log
+
+# IDE & Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+
+# Test & Coverage caches
+.pytest_cache/
+.coverage
+htmlcov/

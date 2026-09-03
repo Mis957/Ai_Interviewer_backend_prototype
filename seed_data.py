@@ -49,6 +49,14 @@ INITIAL_QUESTIONS = [
     # Java
     {
         "technology": "Java",
+        "topic": "Collections Framework",
+        "difficulty": "Easy",
+        "question": "What is the difference between ArrayList and LinkedList in Java?",
+        "expected_answer": "ArrayList is backed by a dynamic array providing O(1) random access, whereas LinkedList is a doubly-linked list providing O(1) insertions/deletions at ends but O(N) element lookup.",
+        "keywords": ["ArrayList", "LinkedList", "Dynamic Array", "Doubly-Linked List", "Time Complexity"]
+    },
+    {
+        "technology": "Java",
         "topic": "Garbage Collection",
         "difficulty": "Medium",
         "question": "Explain the difference between Eden, Survivor, and Tenured spaces in JVM heap memory.",
