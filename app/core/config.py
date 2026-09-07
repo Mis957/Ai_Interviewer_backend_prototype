@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     
     # Gemini AI
     GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3.6-flash"
     
     # Storage & Audio
     AUDIO_STORAGE_DIR: str = "./audio_storage"
