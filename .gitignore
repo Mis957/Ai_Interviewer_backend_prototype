@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Environment Variables
+.env
+.env.example
+.env.*
+
+# Node / JS
+node_modules/
+dist/
+build/
+
+# Audio Storage & Test Data
+audio_storage/*
+!audio_storage/.gitkeep
+test_audio/*
+!test_audio/.gitkeep
+
+# Database / SQLite
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE & OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Agent / Tool files
+.gemini/
