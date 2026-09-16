@@ -1,31 +1,39 @@
 # Python
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-.venv/
 
 # Environment Variables
 .env
+.env.local
 .env.example
 .env.*
 
-# Node / JS
+# Node / Frontend
 node_modules/
+frontend/node_modules/
 dist/
+frontend/dist/
 build/
+frontend/build/
+.npm
+*.log
 
 # Audio Storage & Test Data
 audio_storage/*
 !audio_storage/.gitkeep
 test_audio/*
 !test_audio/.gitkeep
+*.mp3
+*.wav
 
 # Database / SQLite
 *.db
@@ -38,6 +46,12 @@ test_audio/*
 *.swp
 *.swo
 .DS_Store
+Thumbs.db
+
+# Test & Coverage caches
+.pytest_cache/
+.coverage
+htmlcov/
 
 # Agent / Tool files
 .gemini/

@@ -1,13 +1,17 @@
 import os
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.database import engine, Base
-from app.routers import interview_router, questions_router, analytics_router
+from app.routers import interview_router, questions_router, analytics_router, resume_router
 
-# Ensure tables are created on startup (for SQLite/Dev mode)
-Base.metadata.create_all(bind=engine)
+# Ensure tables are created on startup (with graceful fallback if remote DB is paused/unreachable)
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    logging.getLogger("uvicorn").warning(f"Database connection error on startup: {e}. Check if Supabase project is active in dashboard.")
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -34,6 +38,7 @@ app.mount("/audio", StaticFiles(directory=settings.AUDIO_STORAGE_DIR), name="aud
 app.include_router(interview_router)
 app.include_router(questions_router)
 app.include_router(analytics_router)
+app.include_router(resume_router)
 
 @app.get("/", tags=["System"])
 def root():
