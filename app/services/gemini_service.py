@@ -261,6 +261,104 @@ Return STRICTLY in JSON format with NO markdown wrapping:
             "keywords": [technology, "architecture", difficulty.lower(), "best-practices"]
         }
 
+    def generate_resume_question(
+        self,
+        resume_data: Dict[str, Any],
+        category: str,
+        difficulty: str,
+        existing_topics: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """
+        Generates interview question specifically tailored to candidate's uploaded resume:
+        - project: Questions based on candidate projects & project tech stack
+        - skill: Technical concept questions on skills listed in resume
+        - hr_behavioral: HR/Behavioral questions based on experience & project hurdles
+        """
+        avoid_str = ", ".join(existing_topics) if existing_topics else "None"
+        candidate_name = resume_data.get("candidate_name", "Candidate")
+        skills_str = ", ".join(resume_data.get("skills", ["Software Engineering"]))
+        projects = resume_data.get("projects", [])
+        proj_str = json.dumps(projects)
+        hr_topics_str = ", ".join(resume_data.get("hr_topics", ["Teamwork", "Problem Solving"]))
+
+        category_instructions = ""
+        if category == "project" and projects:
+            category_instructions = f"Ask a technical deep-dive question about one of the candidate's projects listed here: {proj_str}. Ask about technical architecture, decisions, or implementation details of a specific project."
+        elif category == "hr_behavioral":
+            category_instructions = f"Ask a real-world HR or behavioral question related to their experience or projects (e.g. handling technical conflicts, tight deadlines, handling bugs in production, team collaboration)."
+        else:
+            category_instructions = f"Ask a technical verification question on one of their core resume skills: {skills_str}."
+
+        prompt = f"""
+Act as an expert Technical & HR Interviewer conducting a resume-based interview for candidate '{candidate_name}'.
+
+Candidate Skills: {skills_str}
+Candidate Projects: {proj_str}
+Candidate HR Scenarios: {hr_topics_str}
+
+Target Focus Category: {category}
+Question Difficulty: {difficulty}
+Instructions: {category_instructions}
+Topics Already Asked in this session (AVOID duplicate concepts/topics): {avoid_str}
+
+IMPORTANT: Keep all JSON string values on single lines or use escaped \\n for line breaks.
+
+Return STRICTLY in JSON format with NO markdown wrapping:
+{{
+  "topic": "<Specific Project Name or Skill Topic>",
+  "category": "{category}",
+  "question": "<Tailored Interview Question Text>",
+  "expected_answer": "<Key points expected in candidate response>",
+  "keywords": ["<keyword1>", "<keyword2>"]
+}}
+"""
+        raw_output = self._call_llm(prompt)
+        if raw_output:
+            try:
+                data = self._parse_json(raw_output)
+                if isinstance(data, dict):
+                    question = data.get("question") or data.get("question_text") or ""
+                    if question:
+                        return {
+                            "topic": str(data.get("topic") or f"Resume {category.title()}"),
+                            "category": category,
+                            "question": str(question),
+                            "expected_answer": str(data.get("expected_answer") or "Clear technical explanation with specific project context."),
+                            "keywords": data.get("keywords") if isinstance(data.get("keywords"), list) else [category, difficulty.lower()]
+                        }
+            except Exception as e:
+                logger.error(f"Failed to parse LLM resume question JSON: {e}")
+
+        # Intelligent Fallback Resume Question Generator
+        if category == "project" and projects:
+            proj = projects[0]
+            pname = proj.get("name", "Project")
+            ptest = ", ".join(proj.get("tech_stack", ["Python"]))
+            return {
+                "topic": f"Project: {pname}",
+                "category": "project",
+                "question": f"In your project '{pname}', you used {ptest}. What was the most challenging technical feature you implemented, and how did you design its architecture?",
+                "expected_answer": f"Clear explanation of architecture, technical choices, and trade-offs made during {pname}.",
+                "keywords": [pname, "architecture", "trade-offs"]
+            }
+        elif category == "hr_behavioral":
+            return {
+                "topic": "Behavioral & Conflict Resolution",
+                "category": "hr_behavioral",
+                "question": "Can you describe a situation in one of your past projects where you encountered a critical technical blocker under tight deadlines? How did you resolve it?",
+                "expected_answer": "STAR method explanation demonstrating problem-solving, communication, and resilience under pressure.",
+                "keywords": ["problem-solving", "deadlines", "resilience"]
+            }
+        else:
+            first_skill = resume_data.get("skills", ["Python"])[0]
+            return {
+                "topic": f"Skill: {first_skill}",
+                "category": "skill",
+                "question": f"You mentioned {first_skill} on your resume. How do you approach error handling, concurrency, and performance optimization when developing applications with {first_skill}?",
+                "expected_answer": f"Explanation of best practices, error handling, and memory/performance considerations in {first_skill}.",
+                "keywords": [first_skill, "best-practices", "performance"]
+            }
+
     def generate_final_report(
         self,
         technology: str,

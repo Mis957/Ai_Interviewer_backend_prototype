@@ -211,3 +211,94 @@ Provide a detailed, objective screening report STRICTLY in JSON format with NO m
             recommendations=recommendations,
             suggested_technologies=suggested_tech
         )
+
+    def parse_resume_for_interview(self, file_bytes: bytes, filename: str) -> Dict[str, Any]:
+        """
+        Parses resume into structured format for interview question generation:
+        skills, projects (name, description, tech stack), and HR behavioral topics.
+        """
+        raw_text = self.extract_text(file_bytes, filename)
+        if not raw_text or len(raw_text) < 10:
+            raw_text = f"Resume filename: {filename}."
+
+        if self.groq_api_key:
+            try:
+                url = "https://api.groq.com/openai/v1/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {self.groq_api_key}",
+                    "Content-Type": "application/json"
+                }
+                prompt = f"""
+Act as an expert Technical Recruiter and Engineering Manager. Parse this resume specifically to extract information needed to interview the candidate:
+
+--- RESUME TEXT ---
+{raw_text[:5000]}
+--- END RESUME TEXT ---
+
+Provide output STRICTLY as a single valid JSON object with NO markdown formatting or commentary:
+{{
+  "candidate_name": "<Candidate Name or 'Candidate'>",
+  "primary_technology": "<Primary domain e.g. Python, Fullstack, Java>",
+  "skills": ["<Skill 1>", "<Skill 2>", "<Skill 3>"],
+  "projects": [
+    {{
+      "name": "<Project Name>",
+      "tech_stack": ["<Tech 1>", "<Tech 2>"],
+      "description": "<Concise summary of project goal>"
+    }}
+  ],
+  "hr_topics": [
+    "Team Collaboration and Conflict Resolution",
+    "Overcoming Technical Blockers Under Deadlines",
+    "Architecture Design Trade-offs and Lessons Learned"
+  ]
+}}
+"""
+                payload = {
+                    "model": self.groq_model,
+                    "messages": [
+                        {"role": "system", "content": "You parse resumes for technical interviewing. Respond strictly in valid JSON."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.2
+                }
+                res = requests.post(url, headers=headers, json=payload, timeout=30)
+                if res.status_code == 200:
+                    content = res.json()["choices"][0]["message"]["content"].strip()
+                    if content.startswith("```json"): content = content[7:]
+                    if content.startswith("```"): content = content[3:]
+                    if content.endswith("```"): content = content[:-3]
+                    data = json.loads(content.strip())
+                    data["raw_text"] = raw_text
+                    return data
+            except Exception as e:
+                logger.error(f"Error parsing resume for interview via Groq: {e}")
+
+        # Intelligent Fallback Resume Parser
+        extracted_skills = []
+        low_text = raw_text.lower()
+        for tech in ["python", "java", "sql", "fastapi", "react", "docker", "aws", "postgresql", "node.js", "c++"]:
+            if tech in low_text:
+                extracted_skills.append(tech.title())
+        if not extracted_skills:
+            extracted_skills = ["Python", "Database & SQL", "REST APIs"]
+
+        return {
+            "candidate_name": "Candidate",
+            "primary_technology": extracted_skills[0] if extracted_skills else "Software Engineering",
+            "skills": extracted_skills,
+            "projects": [
+                {
+                    "name": "Software Engineering Project",
+                    "tech_stack": extracted_skills[:3],
+                    "description": "Full-stack application development and system integration."
+                }
+            ],
+            "hr_topics": [
+                "Team Collaboration and Communication",
+                "Problem Solving Under Tight Deadlines",
+                "Technical Project Challenges & Lessons Learned"
+            ],
+            "raw_text": raw_text
+        }
+

@@ -5,7 +5,9 @@ from pydantic import BaseModel, ConfigDict, Field
 class InterviewStartRequest(BaseModel):
     user_id: Optional[str] = Field("candidate_123", description="Candidate ID")
     technology: str = Field("Python", description="Technology track (Python, Java, DBMS, etc.)")
+    mode: str = Field("standard", description="Interview mode: standard or resume")
     initial_difficulty: str = Field("Easy", description="Initial question difficulty")
+    resume_text: Optional[str] = Field(None, description="Optional raw resume text for resume-based mode")
 
 class NextQuestionPayload(BaseModel):
     question_id: Optional[str] = None
@@ -16,11 +18,13 @@ class NextQuestionPayload(BaseModel):
     question_text: str
     audio_url: Optional[str] = None
     is_llm_generated: bool = False
+    question_category: Optional[str] = Field(None, description="Category: project | skill | hr_behavioral | technical")
 
 class InterviewStartResponse(BaseModel):
     session_id: str
     user_id: str
     technology: str
+    mode: str = Field("standard", description="standard or resume")
     status: str
     current_difficulty: str
     first_question: NextQuestionPayload
