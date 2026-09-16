@@ -1,8 +1,11 @@
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, Text, Float, Integer, DateTime, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+
+def utc_now():
+    return datetime.now(timezone.utc)
 
 class InterviewSession(Base):
     __tablename__ = "interview_sessions"
@@ -14,8 +17,8 @@ class InterviewSession(Base):
     status = Column(String(20), nullable=False, default="STARTED")  # STARTED, IN_PROGRESS, COMPLETED
     total_score = Column(Float, default=0.0)
     question_count = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), default=utc_now)
+    updated_at = Column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     answers = relationship("InterviewAnswer", back_populates="session", cascade="all, delete-orphan")
     generated_questions = relationship("GeneratedQuestion", back_populates="session", cascade="all, delete-orphan")
@@ -35,9 +38,12 @@ class InterviewAnswer(Base):
     candidate_audio_path = Column(String, nullable=True)
     
     score = Column(Float, nullable=False, default=0.0)
+    confidence_score = Column(Float, nullable=True, default=8.0)
     feedback = Column(Text, nullable=True)
+    fluency_feedback = Column(Text, nullable=True)
     missing_topics = Column(JSON, nullable=True, default=list)
+    filler_words_detected = Column(JSON, nullable=True, default=list)
     next_difficulty = Column(String(20), nullable=False)
-    evaluated_at = Column(DateTime, default=datetime.utcnow)
+    evaluated_at = Column(DateTime(timezone=True), default=utc_now)
 
     session = relationship("InterviewSession", back_populates="answers")

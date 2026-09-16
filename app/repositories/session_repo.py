@@ -1,6 +1,6 @@
 from typing import Optional, List
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, timezone
 from app.repositories.base import BaseRepository
 from app.models.session import InterviewSession, InterviewAnswer
 
@@ -33,7 +33,7 @@ class InterviewSessionRepository(BaseRepository[InterviewSession]):
         session.current_difficulty = next_difficulty
         session.total_score += score_to_add
         session.question_count += 1
-        session.updated_at = datetime.utcnow()
+        session.updated_at = datetime.now(timezone.utc)
         if status:
             session.status = status
             
@@ -58,7 +58,10 @@ class InterviewAnswerRepository(BaseRepository[InterviewAnswer]):
         next_difficulty: str,
         question_id: Optional[str] = None,
         generated_question_id: Optional[str] = None,
-        candidate_audio_path: Optional[str] = None
+        candidate_audio_path: Optional[str] = None,
+        confidence_score: float = 8.0,
+        fluency_feedback: Optional[str] = None,
+        filler_words_detected: Optional[List[str]] = None
     ) -> InterviewAnswer:
         answer = InterviewAnswer(
             session_id=session_id,
@@ -69,8 +72,11 @@ class InterviewAnswerRepository(BaseRepository[InterviewAnswer]):
             candidate_transcript=candidate_transcript,
             candidate_audio_path=candidate_audio_path,
             score=score,
+            confidence_score=confidence_score,
             feedback=feedback,
+            fluency_feedback=fluency_feedback,
             missing_topics=missing_topics,
+            filler_words_detected=filler_words_detected or [],
             next_difficulty=next_difficulty
         )
         return self.add(answer)

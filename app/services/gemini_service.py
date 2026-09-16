@@ -1,23 +1,139 @@
 import json
 import logging
-from typing import Dict, Any, List
+import re
+import time
+from typing import Dict, Any, List, Optional
 from app.core.config import settings
-from app.schemas.interview import GeminiEvalOutput, FinalReportResponse, LearningRoadmapItem
+from app.schemas.interview import GeminiEvalOutput
+
+try:
+    from groq import Groq
+except ImportError:
+    Groq = None
+
+try:
+    from google import genai
+except ImportError:
+    genai = None
 
 logger = logging.getLogger(__name__)
 
+def _safe_float(val: Any, default: float = 7.0) -> float:
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
 class GeminiService:
-    def __init__(self):
-        self.api_key = settings.GEMINI_API_KEY
-        self.model_name = settings.GEMINI_MODEL
-        self.client = None
+    def __init__(self) -> None:
+        self.api_key: str = settings.GEMINI_API_KEY
+        self.model_name: str = settings.GEMINI_MODEL
+        self.client: Optional[Any] = None
         
-        if self.api_key:
+        self.groq_api_key: str = settings.GROQ_API_KEY
+        self.groq_model: str = settings.GROQ_MODEL
+        self.groq_client: Optional[Any] = None
+
+        if self.groq_api_key and not self.groq_api_key.startswith("your-") and Groq is not None:
             try:
-                from google import genai
+                self.groq_client = Groq(api_key=self.groq_api_key)
+                logger.info("Groq client initialized successfully using native groq SDK.")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Groq client: {e}")
+
+        if self.api_key and not self.api_key.startswith("your-") and genai is not None:
+            try:
                 self.client = genai.Client(api_key=self.api_key)
             except Exception as e:
-                logger.warning(f"Failed to initialize google-genai client: {e}. Will fallback to structured mock responses if called.")
+                logger.warning(f"Failed to initialize google-genai client: {e}")
+
+    def _call_llm(self, prompt: str, system_prompt: str = "Act as an expert technical interviewer.") -> str:
+        """Executes LLM request trying Groq first, then Gemini."""
+        if self.groq_client is not None:
+            for attempt in range(2):
+                try:
+                    response = self.groq_client.chat.completions.create(
+                        model=self.groq_model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": prompt}
+                        ],
+                        temperature=0.7,
+                        max_tokens=1500
+                    )
+                    text_out = response.choices[0].message.content.strip()
+                    if text_out:
+                        return text_out
+                except Exception as e:
+                    logger.error(f"Groq API error (attempt {attempt+1}): {e}")
+                    time.sleep(0.5)
+
+        if self.client is not None:
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=prompt
+                )
+                return response.text.strip()
+            except Exception as e:
+                logger.error(f"Gemini API error: {e}")
+
+        return ""
+
+    def _parse_json(self, text: str) -> Dict[str, Any]:
+        text = text.strip()
+        # Strip thinking tags if model emitted them
+        if "<think>" in text and "</think>" in text:
+            text = text.split("</think>")[-1].strip()
+
+        # Clean markdown formatting if present
+        if "```json" in text:
+            text = text.split("```json")[1].split("```")[0].strip()
+        elif "```" in text:
+            text = text.split("```")[1].split("```")[0].strip()
+
+        # Extract JSON object substring if surrounded by prose
+        start_idx = text.find("{")
+        end_idx = text.rfind("}")
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            text = text[start_idx:end_idx+1]
+
+        # Attempt 1: Standard JSON parse with strict=False
+        try:
+            res = json.loads(text, strict=False)
+            if isinstance(res, dict):
+                return res
+        except Exception:
+            pass
+
+        # Attempt 2: Escape unescaped line breaks inside double-quoted string values
+        try:
+            fixed_text = re.sub(
+                r'"([^"\\]|\\.)*"',
+                lambda m: m.group(0).replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t'),
+                text,
+                flags=re.DOTALL
+            )
+            res = json.loads(fixed_text, strict=False)
+            if isinstance(res, dict):
+                return res
+        except Exception:
+            pass
+
+        # Attempt 3: Field-level regex extraction for damaged LLM output
+        q_match = re.search(r'"question"\s*:\s*"([^"]+)"', text)
+        topic_match = re.search(r'"topic"\s*:\s*"([^"]+)"', text)
+        ans_match = re.search(r'"expected_answer"\s*:\s*"([^"]+)"', text)
+
+        if q_match:
+            return {
+                "topic": topic_match.group(1) if topic_match else "Technical Concepts",
+                "question": q_match.group(1),
+                "expected_answer": ans_match.group(1) if ans_match else "Comprehensive technical explanation.",
+                "keywords": []
+            }
+
+        raise ValueError("Could not parse LLM JSON output.")
 
     def evaluate_answer(
         self,
@@ -25,64 +141,73 @@ class GeminiService:
         expected_answer: str,
         candidate_answer: str
     ) -> GeminiEvalOutput:
-        """
-        Evaluates a candidate's answer against the expected answer using Gemini.
-        Returns a structured GeminiEvalOutput (score, feedback, missing_topics, next_difficulty).
-        """
         prompt = f"""
-Act as an expert technical interviewer.
-Evaluate the candidate's answer for the following question.
+Act as an expert technical interviewer and speech fluency evaluator.
+Evaluate the candidate's answer for technical accuracy AND speech fluency/delivery confidence (speech rate, humming, filler words, repeated words, long pauses).
 
 Question: {question}
 Expected Answer Key: {expected_answer}
-Candidate's Answer: {candidate_answer}
+Candidate's Spoken/Transcribed Answer: {candidate_answer}
 
 Provide your evaluation STRICTLY in JSON format with NO markdown formatting or commentary:
 {{
-  "score": <float between 0.0 and 10.0>,
-  "feedback": "<concise constructve feedback>",
+  "score": <float between 0.0 and 10.0 for technical accuracy>,
+  "confidence_score": <float between 0.0 and 10.0 for speech fluency and delivery confidence>,
+  "feedback": "<concise technical accuracy feedback>",
+  "fluency_feedback": "<constructive feedback analyzing speech delivery, humming, filler words, pauses, and repetition>",
+  "filler_words_detected": ["<filler_word_1>", "<filler_word_2>"],
   "missing_topics": ["<topic1>", "<topic2>"],
   "next_difficulty": "<Easy | Medium | Hard>"
 }}
 
+Scoring Guidelines for confidence_score:
+- 9.0-10.0: Clear, fluent, confident delivery with virtually no filler words or hesitation.
+- 6.5-8.9: Good delivery with minor hesitation or occasional filler words (e.g., "um", "uh", "like").
+- 4.0-6.4: Frequent pauses, noticeable humming ("hmm", "err"), repeated words ("I I", "the the"), or hesitation.
+- <4.0: Heavy humming, excessive breaks/silence, severe stuttering/word repetitions, or very low delivery confidence.
+
 Rules for next_difficulty:
-- If score >= 8.0: next_difficulty should be "Hard" (or upgrade difficulty)
-- If score >= 5.0 and score < 8.0: next_difficulty should be "Medium" (or same difficulty)
-- If score < 5.0: next_difficulty should be "Easy" (or lower difficulty)
+- If score >= 8.0: next_difficulty should be "Hard"
+- If score >= 5.0 and score < 8.0: next_difficulty should be "Medium"
+- If score < 5.0: next_difficulty should be "Easy"
 """
-        if self.client:
+        raw_output = self._call_llm(prompt)
+        if raw_output:
             try:
-                response = self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt
-                )
-                text = response.text.strip()
-                # Clean code blocks if present
-                if text.startswith("```json"):
-                    text = text[7:]
-                if text.startswith("```"):
-                    text = text[3:]
-                if text.endswith("```"):
-                    text = text[:-3]
-                
-                data = json.loads(text.strip())
+                data = self._parse_json(raw_output)
                 return GeminiEvalOutput(
-                    score=float(data.get("score", 7.0)),
-                    feedback=data.get("feedback", "Good effort. Cover core principles deeper."),
-                    missing_topics=data.get("missing_topics", []),
-                    next_difficulty=data.get("next_difficulty", "Medium")
+                    score=_safe_float(data.get("score"), 7.0),
+                    confidence_score=_safe_float(data.get("confidence_score"), 8.0),
+                    feedback=str(data.get("feedback", "Good effort. Cover core principles deeper.")),
+                    fluency_feedback=str(data.get("fluency_feedback", "Clear delivery with steady pace.")),
+                    filler_words_detected=data.get("filler_words_detected") if isinstance(data.get("filler_words_detected"), list) else [],
+                    missing_topics=data.get("missing_topics") if isinstance(data.get("missing_topics"), list) else [],
+                    next_difficulty=str(data.get("next_difficulty", "Medium"))
                 )
             except Exception as e:
-                logger.error(f"Gemini API error during answer evaluation: {e}")
+                logger.error(f"Failed to parse LLM evaluation JSON: {e}")
 
-        # Fallback Mock Evaluation for robust testing without active API key
-        cand_len = len(candidate_answer.strip().split())
+        # Fallback Mock Evaluation for offline/mock testing
+        cand_lower = candidate_answer.lower()
+        cand_words = cand_lower.split()
+        cand_len = len(cand_words)
+        
+        # Detect common filler words
+        common_fillers = ["um", "uh", "hmm", "err", "like", "you know", "basically", "actually"]
+        detected = [fw for fw in common_fillers if fw in cand_lower]
+        
+        conf_score = 9.0 if len(detected) == 0 else (7.0 if len(detected) <= 2 else 4.5)
+        fluency = "Fluent delivery with clear expression." if conf_score >= 8.5 else f"Detected filler words ({', '.join(detected)}). Try to speak with fewer pauses."
+
         score = 8.5 if cand_len > 15 else (6.0 if cand_len > 5 else 4.0)
         next_diff = "Hard" if score >= 8.0 else ("Medium" if score >= 5.0 else "Easy")
         
         return GeminiEvalOutput(
             score=score,
+            confidence_score=conf_score,
             feedback=f"Evaluated answer ({cand_len} words). Good fundamental understanding shown.",
+            fluency_feedback=fluency,
+            filler_words_detected=detected,
             missing_topics=["edge cases", "performance optimization"] if score < 8.0 else [],
             next_difficulty=next_diff
         )
@@ -91,17 +216,16 @@ Rules for next_difficulty:
         self,
         technology: str,
         difficulty: str,
-        existing_topics: List[str] = None
+        existing_topics: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        """
-        Dynamically generates a technical question using Gemini when no suitable database question exists.
-        """
         avoid_str = ", ".join(existing_topics) if existing_topics else "None"
         prompt = f"""
 Generate an interview question for the following track:
 Technology: {technology}
 Difficulty Level: {difficulty}
 Topics to Avoid (Already asked): {avoid_str}
+
+IMPORTANT: Keep all JSON string values on single lines or use escaped \\n for line breaks. Do not output raw unescaped newlines inside string values.
 
 Return STRICTLY in JSON format with NO markdown wrapping:
 {{
@@ -111,23 +235,23 @@ Return STRICTLY in JSON format with NO markdown wrapping:
   "keywords": ["<keyword1>", "<keyword2>", "<keyword3>"]
 }}
 """
-        if self.client:
+        raw_output = self._call_llm(prompt)
+        if raw_output:
             try:
-                response = self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt
-                )
-                text = response.text.strip()
-                if text.startswith("```json"):
-                    text = text[7:]
-                if text.startswith("```"):
-                    text = text[3:]
-                if text.endswith("```"):
-                    text = text[:-3]
-                
-                return json.loads(text.strip())
+                data = self._parse_json(raw_output)
+                if isinstance(data, dict):
+                    question = data.get("question") or data.get("question_text") or data.get("title") or ""
+                    if isinstance(question, dict):
+                        question = question.get("text") or str(question)
+                    if question:
+                        return {
+                            "topic": str(data.get("topic") or data.get("title") or data.get("category") or f"{technology} Concepts"),
+                            "question": str(question),
+                            "expected_answer": str(data.get("expected_answer") or data.get("solution") or data.get("exampleAnswer") or "Comprehensive technical explanation."),
+                            "keywords": data.get("keywords") if isinstance(data.get("keywords"), list) else [technology, difficulty.lower()]
+                        }
             except Exception as e:
-                logger.error(f"Gemini Question Generation Error: {e}")
+                logger.error(f"Failed to parse LLM question generation JSON: {e}. Raw output: {repr(raw_output)}")
 
         # Dynamic fallback generator
         return {
@@ -142,9 +266,6 @@ Return STRICTLY in JSON format with NO markdown wrapping:
         technology: str,
         answers_history: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """
-        Generates a comprehensive final report with technical score, communication score, confidence, and learning roadmap.
-        """
         prompt = f"""
 Act as a Principal Engineer and Hiring Manager. Analyze this candidate's complete interview history:
 
@@ -168,26 +289,15 @@ Generate a detailed final performance report STRICTLY in JSON format:
   ]
 }}
 """
-        if self.client:
+        raw_output = self._call_llm(prompt)
+        if raw_output:
             try:
-                response = self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt
-                )
-                text = response.text.strip()
-                if text.startswith("```json"):
-                    text = text[7:]
-                if text.startswith("```"):
-                    text = text[3:]
-                if text.endswith("```"):
-                    text = text[:-3]
-                
-                return json.loads(text.strip())
+                return self._parse_json(raw_output)
             except Exception as e:
-                logger.error(f"Gemini Final Report Generation Error: {e}")
+                logger.error(f"Failed to parse LLM final report JSON: {e}")
 
         # Fallback Mock Report
-        total_score = sum(a.get("score", 7.0) for a in answers_history)
+        total_score = sum(_safe_float(a.get("score"), 7.0) for a in answers_history)
         count = max(len(answers_history), 1)
         avg_tech = round(total_score / count, 1)
         
