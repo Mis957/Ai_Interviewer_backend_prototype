@@ -116,6 +116,48 @@ Once the server is running, access the interactive docs in your browser:
 `POST /resume/screen` *(Multipart Form Data)*
 - `file`: Upload candidate resume file (`.pdf`, `.txt`, or `.docx`)
 
+- **Sample JSON Output**:
+```json
+{
+  "candidate_name": "Jane Developer",
+  "overall_score": 88.0,
+  "strengths": [
+    "Strong technical skill set identified: Python, FastAPI, PostgreSQL, React, Docker.",
+    "Demonstrated professional work experience with microservices architecture and high availability.",
+    "Effective use of quantitative achievements and performance metrics (e.g. 40% latency reduction)."
+  ],
+  "weaknesses": [
+    "Lacks explicit mention of Cloud Deployment platforms (AWS, GCP, Azure) or Kubernetes orchestration.",
+    "Could expand on automated unit testing frameworks and CI/CD pipelines."
+  ],
+  "key_skills": [
+    "Python",
+    "FastAPI",
+    "PostgreSQL",
+    "React",
+    "Docker",
+    "Redis"
+  ],
+  "projects": [
+    "Built AI Interview Readiness Engine using FastAPI and Supabase.",
+    "E-Commerce recommendation system using Machine Learning."
+  ],
+  "experience": [
+    "Senior Software Developer at TechCorp (2022 - Present)",
+    "Developed microservices in Python and FastAPI with 99.9% uptime."
+  ],
+  "recommendations": [
+    "Incorporate measurable outcomes (STAR format: Situation -> Action -> Impact) for all roles.",
+    "Highlight hands-on experience with cloud infrastructure or CI/CD pipelines."
+  ],
+  "suggested_technologies": [
+    "Python",
+    "DBMS",
+    "Machine Learning"
+  ]
+}
+```
+
 ### 2. Start Interview Session
 `POST /interview/start`
 ```json
