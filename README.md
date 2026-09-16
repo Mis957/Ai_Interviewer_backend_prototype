@@ -1,6 +1,6 @@
 # AI Interview Readiness Platform - Backend Engine
 
-A deterministic, state-machine driven **AI Interview Engine** and **Resume Screening** backend built with **FastAPI**, **SQLAlchemy**, **Supabase PostgreSQL**, **Google Gemini AI (`gemini-3.6-flash`)**, **Edge-TTS**, and **Whisper (STT)** following clean architecture principles.
+A deterministic, state-machine driven **AI Interview Engine** and **Resume Screening** backend built with **FastAPI**, **SQLAlchemy**, **Supabase PostgreSQL**, **Google Gemini AI / Groq AI**, **Edge-TTS**, and **Whisper (STT)** following clean architecture principles.
 
 ---
 
@@ -8,9 +8,9 @@ A deterministic, state-machine driven **AI Interview Engine** and **Resume Scree
 
 - **Deterministic Interview Engine**: Backend state machine acting as the single source of truth for session state, question sequencing, and difficulty scaling (`Easy` ↔ `Medium` ↔ `Hard`).
 - **AI Resume Screening & Evaluation**: Upload candidate resumes (`.pdf`, `.txt`, `.docx`) to extract candidate details, technical skills, projects, and receive an AI-generated assessment of **Strengths**, **Weaknesses / Skill Gaps**, **Overall Score (0-100)**, **Actionable Recommendations**, and **Suggested Technology Tracks**.
-- **Scoped LLM Integration (Google Gemini `gemini-3.6-flash`)**: Used strictly for non-deterministic AI tasks: answer evaluation, dynamic question fallback generation, final report synthesis, and resume screening.
+- **Scoped LLM Integration**: Used for answer evaluation, dynamic question fallback generation, final report synthesis, and resume screening.
 - **Supabase PostgreSQL Connection**: Scalable, persistent database storage for curated questions, interview sessions, candidate responses, and generated questions.
-- **Hybrid Question Selection**: Fetches pre-vetted domain questions from PostgreSQL first, falling back to Gemini AI only when database questions for a topic/difficulty are exhausted.
+- **Hybrid Question Selection**: Fetches pre-vetted domain questions from PostgreSQL first, falling back to LLM generation only when database questions for a topic/difficulty are exhausted.
 - **Asynchronous Audio Pipeline**: Neural Text-To-Speech powered by `edge-tts` and optional Speech-To-Text via `whisper`.
 
 ---
@@ -115,48 +115,6 @@ Once the server is running, access the interactive docs in your browser:
 ### 1. Resume Screening & Analysis
 `POST /resume/screen` *(Multipart Form Data)*
 - `file`: Upload candidate resume file (`.pdf`, `.txt`, or `.docx`)
-
-**Sample JSON Output**:
-```json
-{
-  "candidate_name": "Jane Developer",
-  "overall_score": 88.0,
-  "strengths": [
-    "Strong technical skill set identified: Python, FastAPI, PostgreSQL, React, Docker.",
-    "Demonstrated professional work experience with microservices architecture and high availability.",
-    "Effective use of quantitative achievements and performance metrics (e.g. 40% latency reduction)."
-  ],
-  "weaknesses": [
-    "Lacks explicit mention of Cloud Deployment platforms (AWS, GCP, Azure) or Kubernetes orchestration.",
-    "Could expand on automated unit testing frameworks and CI/CD pipelines."
-  ],
-  "key_skills": [
-    "Python",
-    "FastAPI",
-    "PostgreSQL",
-    "React",
-    "Docker",
-    "Redis"
-  ],
-  "projects": [
-    "Built AI Interview Readiness Engine using FastAPI and Supabase.",
-    "E-Commerce recommendation system using Machine Learning."
-  ],
-  "experience": [
-    "Senior Software Developer at TechCorp (2022 - Present)",
-    "Developed microservices in Python and FastAPI with 99.9% uptime."
-  ],
-  "recommendations": [
-    "Incorporate measurable outcomes (STAR format: Situation -> Action -> Impact) for all roles.",
-    "Highlight hands-on experience with cloud infrastructure or CI/CD pipelines."
-  ],
-  "suggested_technologies": [
-    "Python",
-    "DBMS",
-    "Machine Learning"
-  ]
-}
-```
 
 ### 2. Start Interview Session
 `POST /interview/start`

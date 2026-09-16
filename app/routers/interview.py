@@ -72,6 +72,10 @@ async def submit_answer(
         audio_path = None
         final_text_answer = candidate_answer or ""
 
+        # Sanitize IDs
+        question_id = question_id.strip() if question_id and question_id.strip() not in ("", "null", "None") else None
+        generated_question_id = generated_question_id.strip() if generated_question_id and generated_question_id.strip() not in ("", "null", "None") else None
+
         # Process audio file if uploaded
         if audio_file:
             temp_filename = f"upload_{audio_file.filename}"
@@ -94,6 +98,53 @@ async def submit_answer(
             generated_question_id=generated_question_id,
             candidate_answer=final_text_answer,
             candidate_audio_path=audio_path
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/evaluate-audio", response_model=AnswerEvaluationResponse)
+async def evaluate_audio_answer(
+    session_id: str = Form(...),
+    question_id: Optional[str] = Form(None),
+    generated_question_id: Optional[str] = Form(None),
+    audio_file: UploadFile = File(..., description="Candidate speech audio file (.mp3, .wav, .m4a, .webm)"),
+    db: Session = Depends(get_db)
+):
+    """
+    Dedicated Audio Evaluation API:
+    1. Transcribes candidate spoken response using Groq Whisper API (whisper-large-v3-turbo).
+    2. Evaluates response quality against expected answer using LLM.
+    3. Updates interview session state and returns next question with TTS audio.
+    """
+    try:
+        engine = InterviewEngineService(db)
+        audio_service = AudioService()
+        
+        # Sanitize IDs
+        question_id = question_id.strip() if question_id and question_id.strip() not in ("", "null", "None") else None
+        generated_question_id = generated_question_id.strip() if generated_question_id and generated_question_id.strip() not in ("", "null", "None") else None
+        
+        # Save audio file
+        import uuid
+        ext = os.path.splitext(audio_file.filename)[1] or ".mp3"
+        temp_filename = f"audio_ans_{uuid.uuid4().hex[:8]}{ext}"
+        save_path = os.path.join(audio_service.storage_dir, temp_filename)
+        with open(save_path, "wb") as buffer:
+            buffer.write(await audio_file.read())
+
+        # Speech-To-Text via Groq Whisper API
+        transcribed_text = audio_service.speech_to_text(save_path)
+        if not transcribed_text.strip():
+            raise HTTPException(status_code=400, detail="Could not transcribe audio response. Please speak clearly and try again.")
+
+        return await engine.submit_answer(
+            session_id=session_id,
+            question_id=question_id,
+            generated_question_id=generated_question_id,
+            candidate_answer=transcribed_text,
+            candidate_audio_path=save_path
         )
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))

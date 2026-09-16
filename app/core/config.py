@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "groq/compound-mini"
     
+    # Groq AI
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "groq/compound"
+    
     # Storage & Audio
     AUDIO_STORAGE_DIR: str = "./audio_storage"
     USE_MOCK_SPEECH: bool = False

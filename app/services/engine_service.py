@@ -96,17 +96,42 @@ class InterviewEngineService:
         # 1. Retrieve Question Context & Expected Answer
         question_text = ""
         expected_answer = ""
+        target_question_id = None
+        target_gen_question_id = None
 
+        # Normalize empty strings to None
+        if question_id in ("", "null", "None"):
+            question_id = None
+        if generated_question_id in ("", "null", "None"):
+            generated_question_id = None
+
+        # Check question_id in curated table first, then generated table
         if question_id:
             db_q = self.question_repo.get_by_id(question_id)
             if db_q:
                 question_text = db_q.question
                 expected_answer = db_q.expected_answer
-        elif generated_question_id:
+                target_question_id = db_q.id
+            else:
+                gen_q = self.gen_q_repo.get_by_id(question_id)
+                if gen_q:
+                    question_text = gen_q.question_text
+                    expected_answer = gen_q.expected_answer
+                    target_gen_question_id = gen_q.id
+
+        # Check generated_question_id if still not found
+        if not question_text and generated_question_id:
             gen_q = self.gen_q_repo.get_by_id(generated_question_id)
             if gen_q:
                 question_text = gen_q.question_text
                 expected_answer = gen_q.expected_answer
+                target_gen_question_id = gen_q.id
+            else:
+                db_q = self.question_repo.get_by_id(generated_question_id)
+                if db_q:
+                    question_text = db_q.question
+                    expected_answer = db_q.expected_answer
+                    target_question_id = db_q.id
 
         if not question_text:
             raise ValueError("Question not found for evaluation.")
@@ -124,15 +149,18 @@ class InterviewEngineService:
         # 4. Save Answer & Evaluation Record to DB
         answer_record = self.answer_repo.save_answer(
             session_id=session.id,
-            question_id=question_id,
-            generated_question_id=generated_question_id,
+            question_id=target_question_id,
+            generated_question_id=target_gen_question_id,
             question_text=question_text,
             expected_answer=expected_answer,
             candidate_transcript=candidate_answer,
             candidate_audio_path=candidate_audio_path,
             score=eval_result.score,
+            confidence_score=eval_result.confidence_score,
             feedback=eval_result.feedback,
+            fluency_feedback=eval_result.fluency_feedback,
             missing_topics=eval_result.missing_topics,
+            filler_words_detected=eval_result.filler_words_detected,
             next_difficulty=next_diff
         )
 
@@ -173,8 +201,12 @@ class InterviewEngineService:
         return AnswerEvaluationResponse(
             answer_id=answer_record.id,
             session_id=session.id,
+            transcribed_text=candidate_answer,
             score=eval_result.score,
+            confidence_score=eval_result.confidence_score,
             feedback=eval_result.feedback,
+            fluency_feedback=eval_result.fluency_feedback,
+            filler_words_detected=eval_result.filler_words_detected,
             missing_topics=eval_result.missing_topics,
             current_difficulty=session.current_difficulty,
             next_difficulty=next_diff,
@@ -193,7 +225,10 @@ class InterviewEngineService:
                 "question": a.question_text,
                 "candidate_answer": a.candidate_transcript,
                 "score": a.score,
+                "confidence_score": getattr(a, "confidence_score", 8.0),
                 "feedback": a.feedback,
+                "fluency_feedback": getattr(a, "fluency_feedback", None),
+                "filler_words_detected": getattr(a, "filler_words_detected", []),
                 "missing_topics": a.missing_topics
             }
             for a in answers
