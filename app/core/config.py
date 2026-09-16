@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.6-flash"
     
+    # Groq AI
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "groq/compound-mini"
+    
     # Storage & Audio
     AUDIO_STORAGE_DIR: str = "./audio_storage"
     USE_MOCK_SPEECH: bool = False

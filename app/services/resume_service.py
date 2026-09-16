@@ -1,6 +1,8 @@
 import io
+import re
 import json
 import logging
+import requests
 from typing import Dict, Any, List
 from app.core.config import settings
 from app.schemas.resume import ResumeScreeningResponse
@@ -9,17 +11,8 @@ logger = logging.getLogger(__name__)
 
 class ResumeService:
     def __init__(self):
-        self.api_key = settings.GEMINI_API_KEY
-        self.model_name = settings.GEMINI_MODEL
-        self.client = None
-        
-        # Only initialize client if a valid API key is set (not the placeholder)
-        if self.api_key and "your-" not in self.api_key.lower():
-            try:
-                from google import genai
-                self.client = genai.Client(api_key=self.api_key)
-            except Exception as e:
-                logger.warning(f"Failed to initialize google-genai client for ResumeService: {e}")
+        self.groq_api_key = settings.GROQ_API_KEY
+        self.groq_model = settings.GROQ_MODEL or "groq/compound-mini"
 
     def extract_text(self, file_bytes: bytes, filename: str) -> str:
         """
@@ -40,7 +33,6 @@ class ResumeService:
                 extracted_text = "\n".join(text_parts)
             except Exception as e:
                 logger.error(f"Error extracting text with pypdf: {e}")
-                # Fallback simple text decode if pypdf fails
                 try:
                     extracted_text = file_bytes.decode("utf-8", errors="ignore")
                 except Exception:
@@ -66,15 +58,15 @@ class ResumeService:
 
         return extracted_text.strip()
 
-    def screen_resume(self, file_bytes: bytes, filename: str) -> ResumeScreeningResponse:
+    def screen_resume_with_groq(self, raw_text: str, filename: str) -> Dict[str, Any]:
         """
-        Screens candidate resume text and returns structured evaluation containing
-        strengths, weaknesses, key skills, score, recommendations, and suggested tech tracks.
+        Calls Groq API to perform LLM-powered resume screening.
         """
-        raw_text = self.extract_text(file_bytes, filename)
-        
-        if not raw_text or len(raw_text) < 10:
-            raw_text = f"Resume filename: {filename}. Content could not be fully parsed as plain text."
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.groq_api_key}",
+            "Content-Type": "application/json"
+        }
 
         prompt = f"""
 Act as an expert Technical Recruiter, Resume Analyst, and Hiring Manager.
@@ -112,24 +104,53 @@ Provide a detailed, objective screening report STRICTLY in JSON format with NO m
   ]
 }}
 """
-        if self.client:
+
+        payload = {
+            "model": self.groq_model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a professional Technical Recruiter and Resume Analyst. Always respond strictly in valid JSON format."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "temperature": 0.2
+        }
+
+        res = requests.post(url, headers=headers, json=payload, timeout=30)
+        if res.status_code != 200:
+            raise RuntimeError(f"Groq API Error ({res.status_code}): {res.text}")
+
+        content = res.json()["choices"][0]["message"]["content"].strip()
+        if content.startswith("```json"):
+            content = content[7:]
+        if content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+
+        return json.loads(content.strip())
+
+    def screen_resume(self, file_bytes: bytes, filename: str) -> ResumeScreeningResponse:
+        """
+        Screens candidate resume text using Groq API and returns structured evaluation containing
+        strengths, weaknesses, key skills, score, recommendations, and suggested tech tracks.
+        """
+        raw_text = self.extract_text(file_bytes, filename)
+        
+        if not raw_text or len(raw_text) < 10:
+            raw_text = f"Resume filename: {filename}. Content could not be fully parsed as plain text."
+
+        # 1. Screen using Groq API if API Key is configured
+        if self.groq_api_key:
             try:
-                response = self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt
-                )
-                text = response.text.strip()
-                if text.startswith("```json"):
-                    text = text[7:]
-                if text.startswith("```"):
-                    text = text[3:]
-                if text.endswith("```"):
-                    text = text[:-3]
-                
-                data = json.loads(text.strip())
+                data = self.screen_resume_with_groq(raw_text, filename)
                 return ResumeScreeningResponse(
                     candidate_name=data.get("candidate_name", "Candidate"),
-                    overall_score=float(data.get("overall_score", 75.0)),
+                    overall_score=float(data.get("overall_score", 78.0)),
                     strengths=data.get("strengths", ["Solid foundational technical knowledge.", "Relevant project involvement."]),
                     weaknesses=data.get("weaknesses", ["Limited quantifiable metrics for project achievements.", "Needs deeper exposure to system design."]),
                     key_skills=data.get("key_skills", ["Python", "FastAPI", "SQL"]),
@@ -137,9 +158,9 @@ Provide a detailed, objective screening report STRICTLY in JSON format with NO m
                     suggested_technologies=data.get("suggested_technologies", ["Python", "DBMS"])
                 )
             except Exception as e:
-                logger.error(f"Gemini API error during resume screening: {e}")
+                logger.error(f"Groq API error during resume screening: {e}")
 
-        # Intelligent Fallback Resume Evaluation when LLM API key is absent or unreachable
+        # 2. Intelligent Fallback Resume Evaluation when Groq API key is absent or unreachable
         word_count = len(raw_text.split())
         has_python = "python" in raw_text.lower()
         has_java = "java" in raw_text.lower()
