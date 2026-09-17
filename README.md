@@ -1,17 +1,20 @@
 # AI Interview Readiness Platform - Backend Engine
 
-A deterministic, state-machine driven **AI Interview Engine** and **Resume Screening** backend built with **FastAPI**, **SQLAlchemy**, **Supabase PostgreSQL**, **Google Gemini AI / Groq AI**, **Edge-TTS**, and **Whisper (STT)** following clean architecture principles.
+A deterministic, state-machine driven **AI Interview Engine** and **Resume Screening** backend built with **FastAPI**, **SQLAlchemy**, **Supabase PostgreSQL** **Google Gemini AI / Groq AI**, **Edge-TTS**, and **Whisper (STT)** following clean architecture principles.
 
 ---
 
 ## 🌟 Key Features
 
 - **Deterministic Interview Engine**: Backend state machine acting as the single source of truth for session state, question sequencing, and difficulty scaling (`Easy` ↔ `Medium` ↔ `Hard`).
-- **AI Resume Screening & Evaluation**: Upload candidate resumes (`.pdf`, `.txt`, `.docx`) to extract candidate details, technical skills, projects, and receive an AI-generated assessment of **Strengths**, **Weaknesses / Skill Gaps**, **Overall Score (0-100)**, **Actionable Recommendations**, and **Suggested Technology Tracks**.
-- **Scoped LLM Integration**: Used for answer evaluation, dynamic question fallback generation, final report synthesis, and resume screening.
-- **Supabase PostgreSQL Connection**: Scalable, persistent database storage for curated questions, interview sessions, candidate responses, and generated questions.
-- **Hybrid Question Selection**: Fetches pre-vetted domain questions from PostgreSQL first, falling back to LLM generation only when database questions for a topic/difficulty are exhausted.
-- **Asynchronous Audio Pipeline**: Neural Text-To-Speech powered by `edge-tts` and optional Speech-To-Text via `whisper`.
+- **Dual Interview Modes (`standard` & `resume`)**:
+  - **Standard Mode (`mode="standard"`)**: Practice domain-specific technical tracks (Python, Java, DBMS, Fullstack Web Development, etc.).
+  - **Resume-Based Mode (`mode="resume"`)**: Practice dynamically generated questions based on uploaded candidate resumes (projects, project technologies, core skills, and HR/behavioral scenarios).
+- **Adaptive Topic Rotation**: In Resume-Based mode, if candidate struggles ($\text{Score} < 5.0$), the engine rotates topics (`Project` $\rightarrow$ `HR/Behavioral` $\rightarrow$ `Skill`) at `Easy` level so candidate covers their entire resume without getting stuck on a single failing topic.
+- **AI Resume Screening & Evaluation**: Upload candidate resumes (`.pdf`, `.txt`, `.docx`) to extract details, technical skills, projects, and receive an AI-generated assessment of **Strengths**, **Weaknesses / Skill Gaps**, **Overall Score (0-100)**, **Actionable Recommendations**, and **Suggested Technology Tracks**.
+- **Supabase PostgreSQL & SQLite Auto-Fallback**: Persistent database storage with automatic fallback to local SQLite database if remote PostgreSQL is unreachable, plus automatic schema migrations for missing columns.
+- **Hybrid Question Selection**: Checks pre-vetted domain questions from the database first, falling back to LLM dynamic generation only when database questions are exhausted, saving newly generated questions to the database automatically.
+- **Asynchronous Speech Pipeline**: Neural Text-To-Speech powered by `edge-tts` and Speech-To-Text via Groq Whisper API.
 
 ---
 
@@ -22,7 +25,7 @@ Ai_Interviewer_backend_prototype/
 ├── app/
 │   ├── core/
 │   │   ├── config.py           # Environment settings & Pydantic BaseSettings
-│   │   └── database.py         # SQLAlchemy engine, SessionLocal & Base
+│   │   └── database.py         # SQLAlchemy engine, SessionLocal & auto-schema migrations
 │   ├── models/
 │   │   ├── question.py         # Question & GeneratedQuestion DB models
 │   │   └── session.py          # InterviewSession & InterviewAnswer DB models
@@ -30,25 +33,24 @@ Ai_Interviewer_backend_prototype/
 │   │   ├── question.py         # Question Pydantic v2 schemas
 │   │   ├── interview.py        # Session, Answer, Eval & Final Report schemas
 │   │   ├── resume.py           # Resume Screening Response schemas
-│   │   └── audio.py           # Audio request/response payload schemas
+│   │   └── audio.py            # Audio request/response payload schemas
 │   ├── repositories/
 │   │   ├── base.py             # Generic CRUD Base Repository
 │   │   ├── question_repo.py    # Database queries for curated & generated questions
 │   │   └── session_repo.py     # Database queries for sessions & answers
 │   ├── services/
-│   │   ├── gemini_service.py   # Gemini AI (Evaluation, Fallback Generation, Reports)
+│   │   ├── gemini_service.py   # Groq / Gemini AI (Evaluation, Dynamic Generation, Reports)
 │   │   ├── resume_service.py   # Resume Parsing (PDF/TXT/DOCX) & AI Screening
-│   │   ├── audio_service.py    # TTS (Edge-TTS) & STT (Whisper) services
-│   │   ├── selection_service.py# Hybrid DB-first / LLM-fallback selection
+│   │   ├── audio_service.py    # TTS (Edge-TTS) & STT (Groq Whisper) services
+│   │   ├── selection_service.py# Hybrid DB-first / LLM-fallback & Adaptive Topic Rotation
 │   │   └── engine_service.py   # State Machine Orchestrator & Difficulty scaling
 │   ├── routers/
-│   │   ├── interview.py        # /interview/* endpoints
+│   │   ├── interview.py        # /interview/* endpoints (start, answer, evaluate-audio, end)
 │   │   ├── questions.py        # /questions/* endpoints
 │   │   ├── resume.py           # /resume/* screening endpoints
 │   │   └── analytics.py        # /analytics/* endpoints
 │   └── main.py                 # FastAPI app entrypoint & CORS middleware
 ├── seed_data.py                # Pre-populated technical questions seed script
-├── test_api.py                 # End-to-end integration test runner
 ├── requirements.txt            # Python dependencies
 └── README.md                   # Project documentation
 ```
@@ -57,7 +59,21 @@ Ai_Interviewer_backend_prototype/
 
 ## ⚙️ Environment Configuration
 
-Refer to the `.env.example` file for the `.env` configurations.
+Refer to the `.env.example` file for `.env` configurations:
+
+```env
+PROJECT_NAME="AI Interview Readiness Platform Engine"
+DATABASE_URL="postgresql://postgres.user:password@aws-0-ap-southeast-2.pooler.supabase.com:6543/postgres"
+
+GEMINI_API_KEY="your-gemini-api-key-here"
+GEMINI_MODEL="gemini-3.6-flash"
+
+GROQ_API_KEY="gsk_your_groq_api_key_here"
+GROQ_MODEL="groq/compound-mini"
+
+AUDIO_STORAGE_DIR="./audio_storage"
+USE_MOCK_SPEECH=False
+```
 
 ---
 
@@ -86,7 +102,7 @@ pip install -r requirements.txt
 
 ### 3. Seed Initial Question Bank
 
-Populate Supabase PostgreSQL with initial curated domain questions:
+Populate database with initial curated domain questions:
 
 ```bash
 python seed_data.py
@@ -102,7 +118,7 @@ uvicorn app.main:app --reload --port 8000
 
 ## 📖 API Documentation & Interactive UI
 
-Once the server is running, access the interactive docs in your browser:
+Once the server is running, access the interactive documentation in your browser:
 
 - 🟢 **Swagger UI**: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
 - 🔵 **ReDoc**: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
@@ -116,18 +132,18 @@ Once the server is running, access the interactive docs in your browser:
 `POST /resume/screen` *(Multipart Form Data)*
 - `file`: Upload candidate resume file (`.pdf`, `.txt`, or `.docx`)
 
-- **Sample JSON Output**:
+**Sample Response**:
 ```json
 {
   "candidate_name": "Jane Developer",
   "overall_score": 88.0,
   "strengths": [
     "Strong technical skill set identified: Python, FastAPI, PostgreSQL, React, Docker.",
-    "Demonstrated professional work experience with microservices architecture and high availability.",
-    "Effective use of quantitative achievements and performance metrics (e.g. 40% latency reduction)."
+    "Demonstrated work experience with microservices architecture and high availability.",
+    "Effective use of quantitative achievements and performance metrics."
   ],
   "weaknesses": [
-    "Lacks explicit mention of Cloud Deployment platforms (AWS, GCP, Azure) or Kubernetes orchestration.",
+    "Lacks explicit mention of Cloud Deployment platforms (AWS, GCP, Azure).",
     "Could expand on automated unit testing frameworks and CI/CD pipelines."
   ],
   "key_skills": [
@@ -135,16 +151,7 @@ Once the server is running, access the interactive docs in your browser:
     "FastAPI",
     "PostgreSQL",
     "React",
-    "Docker",
-    "Redis"
-  ],
-  "projects": [
-    "Built AI Interview Readiness Engine using FastAPI and Supabase.",
-    "E-Commerce recommendation system using Machine Learning."
-  ],
-  "experience": [
-    "Senior Software Developer at TechCorp (2022 - Present)",
-    "Developed microservices in Python and FastAPI with 99.9% uptime."
+    "Docker"
   ],
   "recommendations": [
     "Incorporate measurable outcomes (STAR format: Situation -> Action -> Impact) for all roles.",
@@ -158,40 +165,104 @@ Once the server is running, access the interactive docs in your browser:
 }
 ```
 
+---
+
 ### 2. Start Interview Session
-`POST /interview/start`
+`POST /interview/start` *(Form Data)*
+
+Choose the interview mode using the `mode` parameter: **Standard** or **Resume-Based**.
+
+#### Mode 1: Standard Mode (`mode="standard"`)
+Start a domain-specific interview (e.g. Python, Java, DBMS, Fullstack):
+* **Parameters**:
+  - `user_id`: `"candidate_101"`
+  - `mode`: `"standard"`
+  - `technology`: `"Python"`
+  - `initial_difficulty`: `"Easy"`
+
+#### Mode 2: Resume-Based Mode (`mode="resume"`)
+Start an adaptive interview tailored to the candidate's uploaded resume:
+* **Parameters**:
+  - `user_id`: `"candidate_101"`
+  - `mode`: `"resume"`
+  - `initial_difficulty`: `"Easy"`
+  - `file`: *(Upload candidate `.pdf`, `.txt`, or `.docx` file)*
+  - `resume_text`: *(Optional plain text resume if not uploading file)*
+
+**Sample Response (`HTTP 201 Created`)**:
 ```json
 {
+  "session_id": "a0b25a05-7ab8-4b06-8587-bc57a006a249",
   "user_id": "candidate_101",
   "technology": "Python",
-  "initial_difficulty": "Easy"
+  "mode": "resume",
+  "status": "STARTED",
+  "current_difficulty": "Easy",
+  "first_question": {
+    "question_id": null,
+    "generated_question_id": "7d27d98d-965d-472d-943d-6e2491efdf31",
+    "technology": "Resume-Based",
+    "topic": "AI Interviewer Platform",
+    "difficulty": "Easy",
+    "question_text": "In your project 'AI Interviewer Platform', how did you handle asynchronous speech-to-text processing using FastAPI?",
+    "audio_url": "./audio_storage/tts_3159ed8fe8c5.mp3",
+    "is_llm_generated": true,
+    "question_category": "project"
+  }
 }
 ```
+
+---
 
 ### 3. Submit Answer (Text or Audio)
 `POST /interview/answer` *(Form Data)*
 - `session_id`: `<uuid>`
-- `question_id`: `<uuid>`
+- `question_id`: `<uuid>` *(or `generated_question_id`)*
 - `candidate_answer`: `"A decorator is a wrapper function..."`
 - `audio_file`: *(Optional audio file upload)*
+
+**Sample Response**:
+```json
+{
+  "answer_id": "b1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e",
+  "session_id": "a0b25a05-7ab8-4b06-8587-bc57a006a249",
+  "transcribed_text": "A decorator is a wrapper function...",
+  "score": 8.5,
+  "confidence_score": 9.0,
+  "feedback": "Clear explanation of wrapper functions and @decorator syntax.",
+  "fluency_feedback": "Fluent delivery with clear expression.",
+  "filler_words_detected": [],
+  "missing_topics": [],
+  "current_difficulty": "Easy",
+  "next_difficulty": "Medium",
+  "next_question": {
+    "question_text": "Next interview question...",
+    "audio_url": "./audio_storage/tts_next.mp3"
+  },
+  "session_completed": false
+}
+```
+
+---
 
 ### 4. Conclude Interview & Get Final Report
 `POST /interview/end` *(Form Data)*
 - `session_id`: `<uuid>`
 
-Returns overall technical score, communication score, confidence rating, strong/weak topics, and a structured learning roadmap.
-
-### 5. Manage Question Bank
-- `GET /questions?technology=Python` — List questions by technology track
-- `POST /questions` — Add a new curated technical question
-- `GET /questions/random?limit=5` — Get a random question sample
+Returns overall technical score, communication score, confidence rating, strong/weak topics, detailed Q&A history, and a structured learning roadmap.
 
 ---
 
-## 📈 Difficulty Transition Rules
+### 5. Manage Question Bank & Analytics
+- `GET /questions?technology=Python` — List questions by technology track
+- `POST /questions` — Add a new curated technical question
+- `GET /questions/random?limit=5` — Get a random question sample
+- `GET /analytics/learning` — Get self-learning auto-curation analytics
 
-The state machine scales question difficulty based on evaluation scores:
+---
 
-- **Score ≥ 8.0**: Upgrade difficulty (`Easy` → `Medium` → `Hard`)
-- **5.0 ≤ Score < 8.0**: Retain current difficulty level
-- **Score < 5.0**: Downgrade difficulty (`Hard` → `Medium` → `Easy`)
+## 📈 Difficulty Transition & Adaptive Topic Rotation Rules
+
+- **Score ≥ 8.0**: Upgrade difficulty (`Easy` → `Medium` → `Hard`) and ask deeper architectural questions.
+- **5.0 ≤ Score < 8.0**: Retain current difficulty level (`Medium`).
+- **Score < 5.0**: Keep difficulty `Easy`. In **Resume Mode**, perform adaptive topic rotation (`Project` → `HR/Behavioral` → `Skill`) so candidate covers their entire resume without getting stuck on a failing topic.

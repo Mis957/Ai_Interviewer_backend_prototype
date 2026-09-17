@@ -53,20 +53,63 @@ class InterviewEngineService:
 
         return self.DIFFICULTY_LEVELS[next_idx]
 
-    async def start_interview(self, req: InterviewStartRequest) -> InterviewStartResponse:
-        # Create session in DB
-        session = self.session_repo.create_session(
-            user_id=req.user_id or "candidate_123",
-            technology=req.technology,
-            initial_difficulty=req.initial_difficulty
-        )
+    async def start_interview(
+        self,
+        req: InterviewStartRequest,
+        file_bytes: Optional[bytes] = None,
+        filename: Optional[str] = None
+    ) -> InterviewStartResponse:
+        mode = (getattr(req, "mode", "standard") or "standard").lower()
 
-        # Select first question (DB or Gemini)
-        first_q = self.selection_service.select_next_question(
-            session_id=session.id,
-            technology=session.technology,
-            difficulty=session.current_difficulty
-        )
+        if mode == "resume":
+            from app.services.resume_service import ResumeService
+            resume_svc = ResumeService()
+            if file_bytes:
+                parsed_resume = resume_svc.parse_resume_for_interview(file_bytes, filename or "resume.pdf")
+            elif getattr(req, "resume_text", None):
+                parsed_resume = resume_svc.parse_resume_for_interview(req.resume_text.encode("utf-8"), "resume.txt")
+            else:
+                parsed_resume = {
+                    "candidate_name": "Candidate",
+                    "primary_technology": req.technology or "Software Engineering",
+                    "skills": [req.technology or "Python"],
+                    "projects": [],
+                    "hr_topics": ["Teamwork", "Problem Solving"]
+                }
+
+            session = self.session_repo.create_session(
+                user_id=req.user_id or "candidate_123",
+                technology=parsed_resume.get("primary_technology", req.technology or "Resume-Based"),
+                initial_difficulty=req.initial_difficulty or "Easy"
+            )
+            session.mode = "resume"
+            session.resume_text = parsed_resume.get("raw_text")
+            session.resume_data = parsed_resume
+            self.db.commit()
+            self.db.refresh(session)
+
+            first_q = self.selection_service.select_next_resume_question(
+                session_id=session.id,
+                resume_data=parsed_resume,
+                current_difficulty=session.current_difficulty,
+                last_score=None
+            )
+        else:
+            # Standard Mode
+            session = self.session_repo.create_session(
+                user_id=req.user_id or "candidate_123",
+                technology=req.technology or "Python",
+                initial_difficulty=req.initial_difficulty or "Easy"
+            )
+            session.mode = "standard"
+            self.db.commit()
+            self.db.refresh(session)
+
+            first_q = self.selection_service.select_next_question(
+                session_id=session.id,
+                technology=session.technology,
+                difficulty=session.current_difficulty
+            )
 
         # Convert question text to speech
         audio_path = await self.audio_service.text_to_speech(first_q.question_text)
@@ -76,6 +119,7 @@ class InterviewEngineService:
             session_id=session.id,
             user_id=session.user_id,
             technology=session.technology,
+            mode=session.mode,
             status=session.status,
             current_difficulty=session.current_difficulty,
             first_question=first_q
@@ -186,12 +230,20 @@ class InterviewEngineService:
         next_q_payload = None
 
         if not session_completed:
-            # 6. Select Next Question
-            next_q_payload = self.selection_service.select_next_question(
-                session_id=session.id,
-                technology=session.technology,
-                difficulty=next_diff
-            )
+            # 6. Select Next Question (Resume vs Standard)
+            if getattr(session, "mode", "standard") == "resume" and getattr(session, "resume_data", None):
+                next_q_payload = self.selection_service.select_next_resume_question(
+                    session_id=session.id,
+                    resume_data=session.resume_data,
+                    current_difficulty=next_diff,
+                    last_score=eval_result.score
+                )
+            else:
+                next_q_payload = self.selection_service.select_next_question(
+                    session_id=session.id,
+                    technology=session.technology,
+                    difficulty=next_diff
+                )
             # Synthesize TTS for next question
             audio_path = await self.audio_service.text_to_speech(next_q_payload.question_text)
             next_q_payload.audio_url = audio_path

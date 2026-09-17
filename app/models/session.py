@@ -12,9 +12,12 @@ class InterviewSession(Base):
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, nullable=False, default="candidate_demo")
-    technology = Column(String(50), nullable=False)
+    technology = Column(String(255), nullable=False)
     current_difficulty = Column(String(20), nullable=False, default="Easy")
     status = Column(String(20), nullable=False, default="STARTED")  # STARTED, IN_PROGRESS, COMPLETED
+    mode = Column(String(50), nullable=False, default="standard")  # standard, resume
+    resume_text = Column(Text, nullable=True)
+    resume_data = Column(JSON, nullable=True)
     total_score = Column(Float, default=0.0)
     question_count = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), default=utc_now)
