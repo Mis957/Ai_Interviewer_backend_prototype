@@ -22,7 +22,9 @@ class QuestionSelectionService:
         self,
         session_id: str,
         technology: str,
-        difficulty: str
+        difficulty: str,
+        target_role: Optional[str] = None,
+        years_of_experience: Optional[str] = None
     ) -> NextQuestionPayload:
         """
         Question Selection Logic:
@@ -58,7 +60,9 @@ class QuestionSelectionService:
         gen_data = self.gemini_service.generate_dynamic_question(
             technology=technology,
             difficulty=difficulty,
-            existing_topics=asked_topics
+            existing_topics=asked_topics,
+            target_role=target_role,
+            years_of_experience=years_of_experience
         )
 
         saved_gen_q = self.gen_question_repo.save_generated_question(

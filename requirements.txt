@@ -12,4 +12,4 @@ asyncpg>=0.29.0
 python-dotenv>=1.0.1
 groq>=1.7.0
 pypdf>=4.0.0
-openai-whisper>=20231117; sys_platform != "win32" or python_version < "3.12"
+openai-whisper>=20231117

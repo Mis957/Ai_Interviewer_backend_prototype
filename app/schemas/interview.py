@@ -1,13 +1,29 @@
 from typing import List, Optional, Any, Dict
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
+from enum import Enum
+
+class InterviewMode(str, Enum):
+    STANDARD = "standard"
+    RESUME = "resume"
+
+class DifficultyLevel(str, Enum):
+    EASY = "Easy"
+    MEDIUM = "Medium"
+    HARD = "Hard"
 
 class InterviewStartRequest(BaseModel):
     user_id: Optional[str] = Field("candidate_123", description="Candidate ID")
-    technology: str = Field("Python", description="Technology track (Python, Java, DBMS, etc.)")
-    mode: str = Field("standard", description="Interview mode: standard or resume")
-    initial_difficulty: str = Field("Easy", description="Initial question difficulty")
-    resume_text: Optional[str] = Field(None, description="Optional raw resume text for resume-based mode")
+    mode: InterviewMode = Field(InterviewMode.STANDARD, description="Interview mode: standard or resume")
+    
+    # Standard Mode Fields
+    technology: Optional[str] = Field("Python", description="[Standard Mode] Technology track (Python, Java, DBMS, etc.)")
+    target_role: Optional[str] = Field("Software Developer", description="[Standard Mode] Target Job Role (e.g. Software Developer, Backend Engineer, Fullstack)")
+    years_of_experience: Optional[str] = Field("0", description="[Standard Mode] Years of experience (e.g., '0' for Fresher, '2', '5+')")
+    initial_difficulty: DifficultyLevel = Field(DifficultyLevel.EASY, description="[Standard Mode] Initial question difficulty")
+    
+    # Resume Mode Fields
+    resume_text: Optional[str] = Field(None, description="[Resume Mode] Optional raw resume text")
 
 class NextQuestionPayload(BaseModel):
     question_id: Optional[str] = None
@@ -24,6 +40,8 @@ class InterviewStartResponse(BaseModel):
     session_id: str
     user_id: str
     technology: str
+    target_role: Optional[str] = None
+    years_of_experience: Optional[str] = None
     mode: str = Field("standard", description="standard or resume")
     status: str
     current_difficulty: str

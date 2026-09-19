@@ -13,6 +13,8 @@ class InterviewSession(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String, nullable=False, default="candidate_demo")
     technology = Column(String(255), nullable=False)
+    target_role = Column(String(255), nullable=True)
+    years_of_experience = Column(String(50), nullable=True)
     current_difficulty = Column(String(20), nullable=False, default="Easy")
     status = Column(String(20), nullable=False, default="STARTED")  # STARTED, IN_PROGRESS, COMPLETED
     mode = Column(String(50), nullable=False, default="standard")  # standard, resume

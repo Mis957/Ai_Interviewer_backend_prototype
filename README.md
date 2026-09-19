@@ -8,8 +8,9 @@ A deterministic, state-machine driven **AI Interview Engine** and **Resume Scree
 
 - **Deterministic Interview Engine**: Backend state machine acting as the single source of truth for session state, question sequencing, and difficulty scaling (`Easy` ↔ `Medium` ↔ `Hard`).
 - **Dual Interview Modes (`standard` & `resume`)**:
-  - **Standard Mode (`mode="standard"`)**: Practice domain-specific technical tracks (Python, Java, DBMS, Fullstack Web Development, etc.).
+  - **Standard Mode (`mode="standard"`)**: Practice domain-specific technical tracks (Python, Java, DBMS, Fullstack Web Development, etc.) tailored to candidate's **Target Job Role** (e.g., `Software Developer`, `Backend Architect`) and **Years of Experience** (e.g., `0` for Fresher, `2`, `5+`).
   - **Resume-Based Mode (`mode="resume"`)**: Practice dynamically generated questions based on uploaded candidate resumes (projects, project technologies, core skills, and HR/behavioral scenarios).
+- **Interactive OpenAPI / Swagger UI Dropdowns**: Native Python Enums for `mode` (`standard` | `resume`) and `initial_difficulty` (`Easy` | `Medium` | `Hard`) rendering interactive dropdown menus in Swagger UI.
 - **Adaptive Topic Rotation**: In Resume-Based mode, if candidate struggles ($\text{Score} < 5.0$), the engine rotates topics (`Project` $\rightarrow$ `HR/Behavioral` $\rightarrow$ `Skill`) at `Easy` level so candidate covers their entire resume without getting stuck on a single failing topic.
 - **AI Resume Screening & Evaluation**: Upload candidate resumes (`.pdf`, `.txt`, `.docx`) to extract details, technical skills, projects, and receive an AI-generated assessment of **Strengths**, **Weaknesses / Skill Gaps**, **Overall Score (0-100)**, **Actionable Recommendations**, and **Suggested Technology Tracks**.
 - **Supabase PostgreSQL & SQLite Auto-Fallback**: Persistent database storage with automatic fallback to local SQLite database if remote PostgreSQL is unreachable, plus automatic schema migrations for missing columns.
@@ -173,19 +174,21 @@ Once the server is running, access the interactive documentation in your browser
 Choose the interview mode using the `mode` parameter: **Standard** or **Resume-Based**.
 
 #### Mode 1: Standard Mode (`mode="standard"`)
-Start a domain-specific interview (e.g. Python, Java, DBMS, Fullstack):
+Start a domain-specific interview tailored to target role and experience:
 * **Parameters**:
+  - `mode`: `"standard"` *(Dropdown Enum: standard | resume)*
   - `user_id`: `"candidate_101"`
-  - `mode`: `"standard"`
   - `technology`: `"Python"`
-  - `initial_difficulty`: `"Easy"`
+  - `target_role`: `"Software Developer"` *(Default: Software Developer)*
+  - `years_of_experience`: `"0"` *(Default: 0 for Fresher)*
+  - `initial_difficulty`: `"Easy"` *(Dropdown Enum: Easy | Medium | Hard)*
 
 #### Mode 2: Resume-Based Mode (`mode="resume"`)
 Start an adaptive interview tailored to the candidate's uploaded resume:
 * **Parameters**:
+  - `mode`: `"resume"` *(Dropdown Enum: standard | resume)*
   - `user_id`: `"candidate_101"`
-  - `mode`: `"resume"`
-  - `initial_difficulty`: `"Easy"`
+  - `initial_difficulty`: `"Easy"` *(Dropdown Enum: Easy | Medium | Hard)*
   - `file`: *(Upload candidate `.pdf`, `.txt`, or `.docx` file)*
   - `resume_text`: *(Optional plain text resume if not uploading file)*
 
@@ -195,19 +198,21 @@ Start an adaptive interview tailored to the candidate's uploaded resume:
   "session_id": "a0b25a05-7ab8-4b06-8587-bc57a006a249",
   "user_id": "candidate_101",
   "technology": "Python",
-  "mode": "resume",
+  "target_role": "Software Developer",
+  "years_of_experience": "0",
+  "mode": "standard",
   "status": "STARTED",
   "current_difficulty": "Easy",
   "first_question": {
-    "question_id": null,
-    "generated_question_id": "7d27d98d-965d-472d-943d-6e2491efdf31",
-    "technology": "Resume-Based",
-    "topic": "AI Interviewer Platform",
+    "question_id": "123e4567-e89b-12d3-a456-426614174000",
+    "generated_question_id": null,
+    "technology": "Python",
+    "topic": "Decorators & Functions",
     "difficulty": "Easy",
-    "question_text": "In your project 'AI Interviewer Platform', how did you handle asynchronous speech-to-text processing using FastAPI?",
+    "question_text": "What is a decorator in Python and how do you write a custom function wrapper?",
     "audio_url": "./audio_storage/tts_3159ed8fe8c5.mp3",
-    "is_llm_generated": true,
-    "question_category": "project"
+    "is_llm_generated": false,
+    "question_category": null
   }
 }
 ```

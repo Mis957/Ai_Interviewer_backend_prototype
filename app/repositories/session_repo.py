@@ -8,10 +8,19 @@ class InterviewSessionRepository(BaseRepository[InterviewSession]):
     def __init__(self, db: Session):
         super().__init__(InterviewSession, db)
 
-    def create_session(self, user_id: str, technology: str, initial_difficulty: str = "Easy") -> InterviewSession:
+    def create_session(
+        self,
+        user_id: str,
+        technology: str,
+        initial_difficulty: str = "Easy",
+        target_role: Optional[str] = None,
+        years_of_experience: Optional[str] = None
+    ) -> InterviewSession:
         session = InterviewSession(
             user_id=user_id,
             technology=technology,
+            target_role=target_role,
+            years_of_experience=years_of_experience,
             current_difficulty=initial_difficulty,
             status="STARTED",
             total_score=0.0,

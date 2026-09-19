@@ -216,12 +216,18 @@ Rules for next_difficulty:
         self,
         technology: str,
         difficulty: str,
-        existing_topics: Optional[List[str]] = None
+        existing_topics: Optional[List[str]] = None,
+        target_role: Optional[str] = None,
+        years_of_experience: Optional[str] = None
     ) -> Dict[str, Any]:
         avoid_str = ", ".join(existing_topics) if existing_topics else "None"
+        role_str = target_role or "Software Developer"
+        yoe_str = years_of_experience or "1-3 years"
         prompt = f"""
-Generate an interview question for the following track:
-Technology: {technology}
+Generate an interview question for the following candidate profile:
+Technology Track: {technology}
+Target Job Role: {role_str}
+Years of Experience: {yoe_str}
 Difficulty Level: {difficulty}
 Topics to Avoid (Already asked): {avoid_str}
 
