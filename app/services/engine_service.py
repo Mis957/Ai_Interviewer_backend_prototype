@@ -80,7 +80,9 @@ class InterviewEngineService:
             session = self.session_repo.create_session(
                 user_id=req.user_id or "candidate_123",
                 technology=parsed_resume.get("primary_technology", req.technology or "Resume-Based"),
-                initial_difficulty=req.initial_difficulty or "Easy"
+                initial_difficulty=req.initial_difficulty or "Easy",
+                target_role=req.target_role,
+                years_of_experience=req.years_of_experience
             )
             session.mode = "resume"
             session.resume_text = parsed_resume.get("raw_text")
@@ -99,7 +101,9 @@ class InterviewEngineService:
             session = self.session_repo.create_session(
                 user_id=req.user_id or "candidate_123",
                 technology=req.technology or "Python",
-                initial_difficulty=req.initial_difficulty or "Easy"
+                initial_difficulty=req.initial_difficulty or "Easy",
+                target_role=req.target_role,
+                years_of_experience=req.years_of_experience
             )
             session.mode = "standard"
             self.db.commit()
@@ -108,7 +112,9 @@ class InterviewEngineService:
             first_q = self.selection_service.select_next_question(
                 session_id=session.id,
                 technology=session.technology,
-                difficulty=session.current_difficulty
+                difficulty=session.current_difficulty,
+                target_role=session.target_role,
+                years_of_experience=session.years_of_experience
             )
 
         # Convert question text to speech
@@ -119,6 +125,8 @@ class InterviewEngineService:
             session_id=session.id,
             user_id=session.user_id,
             technology=session.technology,
+            target_role=session.target_role,
+            years_of_experience=session.years_of_experience,
             mode=session.mode,
             status=session.status,
             current_difficulty=session.current_difficulty,
@@ -242,7 +250,9 @@ class InterviewEngineService:
                 next_q_payload = self.selection_service.select_next_question(
                     session_id=session.id,
                     technology=session.technology,
-                    difficulty=next_diff
+                    difficulty=next_diff,
+                    target_role=session.target_role,
+                    years_of_experience=session.years_of_experience
                 )
             # Synthesize TTS for next question
             audio_path = await self.audio_service.text_to_speech(next_q_payload.question_text)

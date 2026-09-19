@@ -41,6 +41,8 @@ def ensure_database_schema(eng):
                 conn.execute(text("ALTER TABLE interview_answers ADD COLUMN IF NOT EXISTS missing_topics JSONB;"))
                 conn.execute(text("ALTER TABLE interview_answers ADD COLUMN IF NOT EXISTS filler_words_detected JSONB;"))
                 conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS mode VARCHAR(50) DEFAULT 'standard';"))
+                conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS target_role VARCHAR(255);"))
+                conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS years_of_experience VARCHAR(50);"))
                 conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS resume_text TEXT;"))
                 conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS resume_data JSONB;"))
                 conn.execute(text("ALTER TABLE interview_sessions ALTER COLUMN technology TYPE VARCHAR(255);"))
@@ -68,6 +70,8 @@ def ensure_database_schema(eng):
                 if cols_sess:
                     missing_sess = {
                         "mode": "VARCHAR(50) DEFAULT 'standard'",
+                        "target_role": "VARCHAR(255)",
+                        "years_of_experience": "VARCHAR(50)",
                         "resume_text": "TEXT",
                         "resume_data": "JSON"
                     }
