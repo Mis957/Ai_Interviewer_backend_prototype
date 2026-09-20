@@ -8,32 +8,54 @@ export const checkHealth = async () => {
   return response.data;
 };
 
-export const startInterview = async (technology, initialDifficulty = 'Easy') => {
-  const response = await axios.post(`${API_BASE_URL}/interview/start`, {
-    user_id: `candidate_${Math.floor(Math.random() * 1000)}`,
-    technology: technology,
-    initial_difficulty: initialDifficulty
-  });
+export const startInterview = async ({
+  mode,
+  userId,
+  technology,
+  targetRole,
+  yearsOfExperience,
+  initialDifficulty = 'Easy',
+  resumeText,
+  file
+}) => {
+  const formData = new FormData();
+
+  if (mode) formData.append('mode', mode);
+  formData.append('user_id', userId || `candidate_${Math.floor(Math.random() * 1000)}`);
+  if (technology) formData.append('technology', technology);
+  if (targetRole) formData.append('target_role', targetRole);
+  if (yearsOfExperience) formData.append('years_of_experience', yearsOfExperience);
+  if (initialDifficulty) formData.append('initial_difficulty', initialDifficulty);
+  if (resumeText) formData.append('resume_text', resumeText);
+  if (file) formData.append('file', file);
+
+  const response = await axios.post(`${API_BASE_URL}/interview/start`, formData);
   return response.data;
 };
 
-export const submitAnswer = async ({ sessionId, questionId, generatedQuestionId, candidateAnswer, audioBlob }) => {
+export const submitAnswer = async ({ sessionId, questionId, generatedQuestionId, candidateAnswer, audioBlob, mimeType }) => {
   const formData = new FormData();
   formData.append('session_id', sessionId);
   if (questionId) formData.append('question_id', questionId);
   if (generatedQuestionId) formData.append('generated_question_id', generatedQuestionId);
-  
+
   if (candidateAnswer) {
     formData.append('candidate_answer', candidateAnswer);
   }
 
   if (audioBlob) {
-    formData.append('audio_file', audioBlob, 'recording.wav');
+    // Derive extension from the actual recorded MIME type so the backend
+    // receives a filename that matches the real bytes (e.g. recording.webm,
+    // not recording.wav when the browser recorded WebM/Opus).
+    const ext = mimeType && mimeType.includes('ogg') ? '.ogg'
+              : mimeType && mimeType.includes('mp4') ? '.mp4'
+              : '.webm'; // Chrome/Edge default
+    formData.append('audio_file', audioBlob, `recording${ext}`);
   }
 
-  const response = await axios.post(`${API_BASE_URL}/interview/answer`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
-  });
+  // Do NOT set Content-Type manually — the browser must generate the
+  // multipart boundary automatically when sending FormData.
+  const response = await axios.post(`${API_BASE_URL}/interview/answer`, formData);
   return response.data;
 };
 
@@ -42,6 +64,14 @@ export const endInterview = async (sessionId) => {
   formData.append('session_id', sessionId);
 
   const response = await axios.post(`${API_BASE_URL}/interview/end`, formData);
+  return response.data;
+};
+
+export const screenResume = async (file) => {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await axios.post(`${API_BASE_URL}/resume/screen`, formData);
   return response.data;
 };
 
@@ -59,3 +89,4 @@ export const getAudioUrl = (relativePath) => {
   }
   return `${API_BASE_URL}/audio/${relativePath}`;
 };
+
