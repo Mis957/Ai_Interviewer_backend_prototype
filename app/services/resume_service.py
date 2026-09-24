@@ -16,23 +16,46 @@ class ResumeService:
 
     def extract_text(self, file_bytes: bytes, filename: str) -> str:
         """
-        Extracts plain text from PDF, TXT, or DOCX files.
+        Extracts plain text from PDF, TXT, or DOCX files with multi-extractor fallbacks.
         """
         filename_lower = filename.lower()
         extracted_text = ""
 
         if filename_lower.endswith(".pdf"):
+            # Extractor 1: pypdf
             try:
                 import pypdf
                 reader = pypdf.PdfReader(io.BytesIO(file_bytes))
-                text_parts = []
-                for page in reader.pages:
-                    txt = page.extract_text()
-                    if txt:
-                        text_parts.append(txt)
-                extracted_text = "\n".join(text_parts)
+                text_parts = [page.extract_text() for page in reader.pages if page.extract_text()]
+                if text_parts:
+                    extracted_text = "\n".join(text_parts)
             except Exception as e:
-                logger.error(f"Error extracting text with pypdf: {e}")
+                logger.warning(f"pypdf extraction failed: {e}")
+
+            # Extractor 2: PyPDF2 fallback
+            if not extracted_text:
+                try:
+                    import PyPDF2
+                    reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
+                    text_parts = [page.extract_text() for page in reader.pages if page.extract_text()]
+                    if text_parts:
+                        extracted_text = "\n".join(text_parts)
+                except Exception as e:
+                    logger.warning(f"PyPDF2 extraction failed: {e}")
+
+            # Extractor 3: pdfplumber fallback
+            if not extracted_text:
+                try:
+                    import pdfplumber
+                    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+                        text_parts = [p.extract_text() for p in pdf.pages if p.extract_text()]
+                        if text_parts:
+                            extracted_text = "\n".join(text_parts)
+                except Exception as e:
+                    logger.warning(f"pdfplumber extraction failed: {e}")
+
+            # Extractor 4: Raw text decoding fallback
+            if not extracted_text:
                 try:
                     extracted_text = file_bytes.decode("utf-8", errors="ignore")
                 except Exception:
@@ -60,14 +83,8 @@ class ResumeService:
 
     def screen_resume_with_groq(self, raw_text: str, filename: str) -> Dict[str, Any]:
         """
-        Calls Groq API to perform LLM-powered resume screening.
+        Calls multi-provider LLM service to perform resume screening.
         """
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.groq_api_key}",
-            "Content-Type": "application/json"
-        }
-
         prompt = f"""
 Act as an expert Technical Recruiter, Resume Analyst, and Hiring Manager.
 Analyze the following candidate resume text thoroughly:
@@ -104,39 +121,20 @@ Provide a detailed, objective screening report STRICTLY in JSON format with NO m
   ]
 }}
 """
+        try:
+            from app.services.gemini_service import GeminiService
+            gemini_svc = GeminiService()
+            raw_output = gemini_svc._call_llm_for_task("analysis", prompt, "You are a professional Technical Recruiter and Resume Analyst.")
+            if raw_output:
+                return gemini_svc._parse_json(raw_output)
+        except Exception as e:
+            logger.warning(f"LLM resume screening error: {e}")
 
-        payload = {
-            "model": self.groq_model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are a professional Technical Recruiter and Resume Analyst. Always respond strictly in valid JSON format."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            "temperature": 0.2
-        }
-
-        res = requests.post(url, headers=headers, json=payload, timeout=30)
-        if res.status_code != 200:
-            raise RuntimeError(f"Groq API Error ({res.status_code}): {res.text}")
-
-        content = res.json()["choices"][0]["message"]["content"].strip()
-        if content.startswith("```json"):
-            content = content[7:]
-        if content.startswith("```"):
-            content = content[3:]
-        if content.endswith("```"):
-            content = content[:-3]
-
-        return json.loads(content.strip())
+        raise RuntimeError("LLM resume screening failed.")
 
     def screen_resume(self, file_bytes: bytes, filename: str) -> ResumeScreeningResponse:
         """
-        Screens candidate resume text using Groq API and returns structured evaluation containing
+        Screens candidate resume text using multi-provider LLM API and returns structured evaluation containing
         strengths, weaknesses, key skills, score, recommendations, and suggested tech tracks.
         """
         raw_text = self.extract_text(file_bytes, filename)
@@ -144,23 +142,22 @@ Provide a detailed, objective screening report STRICTLY in JSON format with NO m
         if not raw_text or len(raw_text) < 10:
             raw_text = f"Resume filename: {filename}. Content could not be fully parsed as plain text."
 
-        # 1. Screen using Groq API if API Key is configured
-        if self.groq_api_key:
-            try:
-                data = self.screen_resume_with_groq(raw_text, filename)
-                return ResumeScreeningResponse(
-                    candidate_name=data.get("candidate_name", "Candidate"),
-                    overall_score=float(data.get("overall_score", 78.0)),
-                    strengths=data.get("strengths", ["Solid foundational technical knowledge.", "Relevant project involvement."]),
-                    weaknesses=data.get("weaknesses", ["Limited quantifiable metrics for project achievements.", "Needs deeper exposure to system design."]),
-                    key_skills=data.get("key_skills", ["Python", "FastAPI", "SQL"]),
-                    recommendations=data.get("recommendations", ["Include measurable metrics for key accomplishments.", "Practice core technical concept questions."]),
-                    suggested_technologies=data.get("suggested_technologies", ["Python", "DBMS"])
-                )
-            except Exception as e:
-                logger.error(f"Groq API error during resume screening: {e}")
+        # 1. Screen using LLM Service
+        try:
+            data = self.screen_resume_with_groq(raw_text, filename)
+            return ResumeScreeningResponse(
+                candidate_name=data.get("candidate_name", "Candidate"),
+                overall_score=float(data.get("overall_score", 78.0)),
+                strengths=data.get("strengths", ["Solid foundational technical knowledge.", "Relevant project involvement."]),
+                weaknesses=data.get("weaknesses", ["Limited quantifiable metrics for project achievements.", "Needs deeper exposure to system design."]),
+                key_skills=data.get("key_skills", ["Python", "FastAPI", "SQL"]),
+                recommendations=data.get("recommendations", ["Include measurable metrics for key accomplishments.", "Practice core technical concept questions."]),
+                suggested_technologies=data.get("suggested_technologies", ["Python", "DBMS"])
+            )
+        except Exception as e:
+            logger.error(f"LLM error during resume screening: {e}")
 
-        # 2. Intelligent Fallback Resume Evaluation when Groq API key is absent or unreachable
+        # 2. Intelligent Fallback Resume Evaluation when external LLMs are unreachable
         word_count = len(raw_text.split())
         has_python = "python" in raw_text.lower()
         has_java = "java" in raw_text.lower()
@@ -221,14 +218,10 @@ Provide a detailed, objective screening report STRICTLY in JSON format with NO m
         if not raw_text or len(raw_text) < 10:
             raw_text = f"Resume filename: {filename}."
 
-        if self.groq_api_key:
-            try:
-                url = "https://api.groq.com/openai/v1/chat/completions"
-                headers = {
-                    "Authorization": f"Bearer {self.groq_api_key}",
-                    "Content-Type": "application/json"
-                }
-                prompt = f"""
+        try:
+            from app.services.gemini_service import GeminiService
+            gemini_svc = GeminiService()
+            prompt = f"""
 Act as an expert Technical Recruiter and Engineering Manager. Parse this resume specifically to extract information needed to interview the candidate:
 
 --- RESUME TEXT ---
@@ -254,25 +247,14 @@ Provide output STRICTLY as a single valid JSON object with NO markdown formattin
   ]
 }}
 """
-                payload = {
-                    "model": self.groq_model,
-                    "messages": [
-                        {"role": "system", "content": "You parse resumes for technical interviewing. Respond strictly in valid JSON."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "temperature": 0.2
-                }
-                res = requests.post(url, headers=headers, json=payload, timeout=30)
-                if res.status_code == 200:
-                    content = res.json()["choices"][0]["message"]["content"].strip()
-                    if content.startswith("```json"): content = content[7:]
-                    if content.startswith("```"): content = content[3:]
-                    if content.endswith("```"): content = content[:-3]
-                    data = json.loads(content.strip())
+            raw_output = gemini_svc._call_llm_for_task("analysis", prompt, "You parse resumes for technical interviewing. Respond strictly in valid JSON.")
+            if raw_output:
+                data = gemini_svc._parse_json(raw_output)
+                if isinstance(data, dict):
                     data["raw_text"] = raw_text
                     return data
-            except Exception as e:
-                logger.error(f"Error parsing resume for interview via Groq: {e}")
+        except Exception as e:
+            logger.error(f"Error parsing resume for interview via LLM: {e}")
 
         # Intelligent Fallback Resume Parser
         extracted_skills = []

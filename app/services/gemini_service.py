@@ -30,55 +30,147 @@ class GeminiService:
         self.model_name: str = settings.GEMINI_MODEL
         self.client: Optional[Any] = None
         
-        self.groq_api_key: str = settings.GROQ_API_KEY
         self.groq_model: str = settings.GROQ_MODEL
-        self.groq_client: Optional[Any] = None
+        self.groq_clients: List[Any] = []
+        self._groq_call_index: int = 0
+        self.task_groq_clients: Dict[str, List[Any]] = {
+            "question_gen": [],
+            "evaluation": [],
+            "analysis": []
+        }
 
-        if self.groq_api_key and not self.groq_api_key.startswith("your-") and Groq is not None:
-            try:
-                self.groq_client = Groq(api_key=self.groq_api_key)
-                logger.info("Groq client initialized successfully using native groq SDK.")
-            except Exception as e:
-                logger.warning(f"Failed to initialize Groq client: {e}")
+        # Collect global Groq API keys
+        raw_groq_keys: List[str] = []
+        for raw_val in [settings.GROQ_API_KEY, getattr(settings, "GROQ_API_KEY_SECONDARY", "")]:
+            if raw_val:
+                raw_groq_keys.extend([k.strip() for k in raw_val.split(",") if k.strip()])
+
+        if Groq is not None:
+            for k in raw_groq_keys:
+                if k and not k.startswith("your-"):
+                    try:
+                        g_client = Groq(api_key=k)
+                        self.groq_clients.append(g_client)
+                        logger.info(f"Initialized global Groq client for key ending in '...{k[-6:]}'")
+                    except Exception as e:
+                        logger.warning(f"Failed to initialize Groq client for key '...{k[-6:]}': {e}")
+
+            # Initialize dedicated per-task Groq clients if configured
+            task_key_map = {
+                "question_gen": getattr(settings, "GROQ_QUESTION_GEN_API_KEY", ""),
+                "evaluation": getattr(settings, "GROQ_EVALUATION_API_KEY", ""),
+                "analysis": getattr(settings, "GROQ_ANALYSIS_API_KEY", "")
+            }
+            for t_name, t_key in task_key_map.items():
+                if t_key and not t_key.startswith("your-"):
+                    try:
+                        t_client = Groq(api_key=t_key.strip())
+                        self.task_groq_clients[t_name].append(t_client)
+                        logger.info(f"Initialized dedicated Groq client for task '{t_name}' (key '...{t_key[-6:]}')")
+                    except Exception as te:
+                        logger.warning(f"Failed to initialize dedicated Groq client for task '{t_name}': {te}")
+
+        # Primary groq_client reference for backward compatibility
+        self.groq_client: Optional[Any] = self.groq_clients[0] if self.groq_clients else None
+
+        # Per-Task API Provider Chain Lists
+        self.question_gen_providers: List[str] = [p.strip().lower() for p in getattr(settings, "QUESTION_GEN_PROVIDERS", "groq,groq,gemini").split(",") if p.strip()]
+        self.evaluation_providers: List[str] = [p.strip().lower() for p in getattr(settings, "EVALUATION_PROVIDERS", "groq,groq,gemini").split(",") if p.strip()]
+        self.analysis_providers: List[str] = [p.strip().lower() for p in getattr(settings, "ANALYSIS_PROVIDERS", "groq,groq,gemini").split(",") if p.strip()]
 
         if self.api_key and not self.api_key.startswith("your-") and genai is not None:
             try:
                 self.client = genai.Client(api_key=self.api_key)
+                logger.info("Google GenAI client initialized successfully.")
             except Exception as e:
                 logger.warning(f"Failed to initialize google-genai client: {e}")
 
-    def _call_llm(self, prompt: str, system_prompt: str = "Act as an expert technical interviewer.") -> str:
-        """Executes LLM request trying Groq first, then Gemini."""
-        if self.groq_client is not None:
-            for attempt in range(2):
+    def _call_groq(
+        self,
+        prompt: str,
+        system_prompt: str = "Act as an expert technical interviewer.",
+        task_type: Optional[str] = None
+    ) -> str:
+        """Helper to invoke Groq API directly using dedicated task key or round-robin global keys."""
+        # Prefer dedicated task clients if available, otherwise use global clients pool
+        candidate_clients = self.task_groq_clients.get(task_type, []) if task_type else []
+        if not candidate_clients:
+            candidate_clients = self.groq_clients
+
+        if not candidate_clients:
+            raise ValueError("No Groq clients are initialized.")
+        
+        # Pick client index for this call and advance counter
+        idx = self._groq_call_index % len(candidate_clients)
+        self._groq_call_index += 1
+        client = candidate_clients[idx]
+
+        max_tok = 800 if task_type in ("analysis", "evaluation") else 400
+        response = client.chat.completions.create(
+            model=self.groq_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=max_tok
+        )
+        return response.choices[0].message.content.strip()
+
+    def _call_gemini(self, prompt: str, system_prompt: str = "Act as an expert technical interviewer.") -> str:
+        """Helper to invoke Gemini API directly."""
+        if self.client is None:
+            raise ValueError("Gemini client is not initialized.")
+        full_prompt = f"{system_prompt}\n\n{prompt}"
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=full_prompt
+        )
+        return response.text.strip()
+
+    def _call_llm_for_task(
+        self,
+        task_type: str,
+        prompt: str,
+        system_prompt: str = "Act as an expert technical interviewer."
+    ) -> str:
+        """
+        Executes LLM request by iterating over configured provider fallback chains for the specific task.
+        task_type can be: 'question_gen', 'evaluation', 'analysis'
+        """
+        providers_map = {
+            "question_gen": self.question_gen_providers,
+            "evaluation": self.evaluation_providers,
+            "analysis": self.analysis_providers
+        }
+        provider_chain = providers_map.get(task_type, ["groq", "gemini"])
+
+        for provider in provider_chain:
+            if provider == "groq":
                 try:
-                    response = self.groq_client.chat.completions.create(
-                        model=self.groq_model,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": prompt}
-                        ],
-                        temperature=0.7,
-                        max_tokens=1500
-                    )
-                    text_out = response.choices[0].message.content.strip()
-                    if text_out:
-                        return text_out
+                    out = self._call_groq(prompt, system_prompt, task_type=task_type)
+                    if out:
+                        logger.info(f"[{task_type}] Successfully fulfilled request via Groq API.")
+                        return out
                 except Exception as e:
-                    logger.error(f"Groq API error (attempt {attempt+1}): {e}")
-                    time.sleep(0.5)
+                    logger.warning(f"[{task_type}] Groq provider failed: {e}. Attempting fallback...")
+            elif provider in ("gemini", "google"):
+                try:
+                    out = self._call_gemini(prompt, system_prompt)
+                    if out:
+                        logger.info(f"[{task_type}] Successfully fulfilled request via Gemini API.")
+                        return out
+                except Exception as e:
+                    logger.warning(f"[{task_type}] Gemini provider failed: {e}. Attempting fallback...")
+            else:
+                logger.debug(f"[{task_type}] Unknown or unconfigured provider '{provider}'. Skipping...")
 
-        if self.client is not None:
-            try:
-                response = self.client.models.generate_content(
-                    model=self.model_name,
-                    contents=prompt
-                )
-                return response.text.strip()
-            except Exception as e:
-                logger.error(f"Gemini API error: {e}")
-
+        logger.warning(f"[{task_type}] All configured API providers ({provider_chain}) failed or were unavailable. Invoking offline task generator.")
         return ""
+
+    def _call_llm(self, prompt: str, system_prompt: str = "Act as an expert technical interviewer.") -> str:
+        """Backward compatible default LLM call method."""
+        return self._call_llm_for_task("question_gen", prompt, system_prompt)
 
     def _parse_json(self, text: str) -> Dict[str, Any]:
         text = text.strip()
@@ -171,7 +263,7 @@ Rules for next_difficulty:
 - If score >= 5.0 and score < 8.0: next_difficulty should be "Medium"
 - If score < 5.0: next_difficulty should be "Easy"
 """
-        raw_output = self._call_llm(prompt)
+        raw_output = self._call_llm_for_task("evaluation", prompt)
         if raw_output:
             try:
                 data = self._parse_json(raw_output)
@@ -218,18 +310,82 @@ Rules for next_difficulty:
         difficulty: str,
         existing_topics: Optional[List[str]] = None,
         target_role: Optional[str] = None,
-        years_of_experience: Optional[str] = None
+        years_of_experience: Optional[str] = None,
+        stage: Optional[str] = None,
+        adaptive_mode: Optional[str] = None,
+        previous_topic: Optional[str] = None,
+        previous_score: Optional[float] = None
     ) -> Dict[str, Any]:
         avoid_str = ", ".join(existing_topics) if existing_topics else "None"
         role_str = target_role or "Software Developer"
         yoe_str = years_of_experience or "1-3 years"
+
+        stage_instruction = ""
+        stage_instruction = ""
+        if stage in ("intro", "stage1_intro"):
+            stage_instruction = f"""
+STAGE 1 - INTRODUCTION & BACKGROUND (OPENING DIRECTIVE):
+Goal: Warm up candidate and identify focal points to drill into later.
+Ask the classic opening: "Walk me through your background and what you’ve been focusing on recently." (tailor slightly for candidate track: {technology}).
+Set topic as "Candidate Introduction & Background".
+"""
+        elif stage in ("intro_followup", "stage1_intro_followup"):
+            prev_top = previous_topic or technology
+            stage_instruction = f"""
+STAGE 1 - INTRODUCTION & BACKGROUND (FOLLOW-UP DIRECTIVE):
+Goal: Follow up once to clarify a highlight before transitioning to project deep-dive.
+Ask a clarifying follow-up based on their focus or previous topic '{prev_top}':
+Ask: "You mentioned working heavily with {prev_top}—what drew you toward performance engineering or systems architecture over general application development?" (or tailored for {technology}).
+Set topic as "Background Follow-up & Specialization".
+"""
+        elif stage in ("project", "stage2_project_deepdive"):
+            vague_push = " Candidate's previous answer was vague or lacking depth, so EXPLICITLY push for specific metrics, profiling tools (e.g. nvprof, perf, valgrind), or architectural trade-offs." if (previous_score is not None and previous_score < 6.0) else ""
+            stage_instruction = f"""
+STAGE 2 - PROJECT DEEP-DIVE (DIRECTIVE):
+Goal: Test technical authenticity, architecture decisions, and ownership.
+Frame question around architectural trade-offs, bottlenecks, thread synchronization, memory allocation/divergence, and design decisions rather than just what the project does.{vague_push}
+Example question style: "In your parallel optimization project, how did you handle thread synchronization and memory divergence across warps?"
+Set topic as "Project Architecture & Engineering Trade-offs".
+"""
+        elif stage in ("technical_adaptive", "stage3_technical_fundamentals"):
+            if adaptive_mode == "deep_dive" and previous_topic:
+                stage_instruction = f"""
+STAGE 3 - TECHNICAL FUNDAMENTALS & TECH STACK (GO DEEPER):
+Goal: Test depth in declared languages, paradigms, and systems engineering.
+Categorize into one of:
+- Language Internals: Memory management, concurrency models, pointer arithmetic (e.g. C++ move semantics vs smart pointers, GIL / CPython memory allocation).
+- Systems / Concurrency: Thread contention, latency vs throughput, distributed coordination (e.g. OpenMPI vs Ray task scheduling).
+- Tooling / DevOps: Container isolation, orchestration nuances, or cloud provisioning.
+The candidate did well on '{previous_topic}'. Drill down deeper into internal mechanics, memory/performance trade-offs, or edge cases of '{previous_topic}'.
+"""
+            elif adaptive_mode == "pivot" and previous_topic:
+                stage_instruction = f"""
+STAGE 3 - TECHNICAL FUNDAMENTALS & TECH STACK (PIVOT):
+Goal: Test depth in declared languages, paradigms, and systems engineering.
+The candidate struggled on '{previous_topic}'. Do NOT dwell on '{previous_topic}'. Pivot cleanly away to another category: Language Internals, Systems/Concurrency, or Tooling/DevOps.
+"""
+            else:
+                stage_instruction = f"""
+STAGE 3 - TECHNICAL FUNDAMENTALS & TECH STACK:
+Goal: Test depth in declared languages, paradigms, and systems engineering for {technology}.
+Categorize into one of:
+1. Language Internals (memory management, concurrency models, move semantics vs smart pointers)
+2. Systems / Concurrency (thread contention, latency vs throughput, OpenMPI vs Ray task scheduling)
+3. Tooling / DevOps (container isolation, orchestration nuances, cloud provisioning)
+Start at Medium difficulty.
+"""
+
         prompt = f"""
-Generate an interview question for the following candidate profile:
-Technology Track: {technology}
-Target Job Role: {role_str}
-Years of Experience: {yoe_str}
-Difficulty Level: {difficulty}
-Topics to Avoid (Already asked): {avoid_str}
+Act as an expert human Technical Interviewer conducting a live interview.
+
+Candidate Profile:
+- Technology Track: {technology}
+- Target Job Role: {role_str}
+- Years of Experience: {yoe_str}
+- Question Difficulty Level: {difficulty}
+- Topics Already Covered in this Session (AVOID DUPLICATES): {avoid_str}
+
+{stage_instruction}
 
 IMPORTANT: Keep all JSON string values on single lines or use escaped \\n for line breaks. Do not output raw unescaped newlines inside string values.
 
@@ -241,7 +397,7 @@ Return STRICTLY in JSON format with NO markdown wrapping:
   "keywords": ["<keyword1>", "<keyword2>", "<keyword3>"]
 }}
 """
-        raw_output = self._call_llm(prompt)
+        raw_output = self._call_llm_for_task("question_gen", prompt)
         if raw_output:
             try:
                 data = self._parse_json(raw_output)
@@ -260,6 +416,21 @@ Return STRICTLY in JSON format with NO markdown wrapping:
                 logger.error(f"Failed to parse LLM question generation JSON: {e}. Raw output: {repr(raw_output)}")
 
         # Dynamic fallback generator
+        if stage in ("intro", "stage1_intro"):
+            return {
+                "topic": "Candidate Introduction & Background",
+                "question": "Walk me through your background and what you’ve been focusing on recently.",
+                "expected_answer": f"Candidate introduces themselves, highlights experience with {technology}, and describes recent technical focus.",
+                "keywords": ["introduction", "background", technology]
+            }
+        elif stage in ("intro_followup", "stage1_intro_followup"):
+            return {
+                "topic": "Background Follow-up & Specialization",
+                "question": f"You mentioned working heavily with {technology} and distributed systems—what drew you toward performance engineering and systems architecture over general application development?",
+                "expected_answer": "Candidate articulates their motivation for performance engineering and systems architecture.",
+                "keywords": [technology, "performance-engineering", "systems"]
+            }
+
         return {
             "topic": f"{technology} Advanced Concepts",
             "question": f"Explain key architectural concepts and best practices in {technology} for {difficulty} level applications.",
@@ -275,10 +446,10 @@ Return STRICTLY in JSON format with NO markdown wrapping:
         existing_topics: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
-        Generates interview question specifically tailored to candidate's uploaded resume:
-        - project: Questions based on candidate projects & project tech stack
-        - skill: Technical concept questions on skills listed in resume
-        - hr_behavioral: HR/Behavioral questions based on experience & project hurdles
+        Generates interview question specifically tailored to candidate's uploaded resume (3-Stage Flow):
+        - Stage 1: intro (Classic Opening) & intro_followup (Clarifying follow-up)
+        - Stage 2: project (Flagship project architecture, trade-offs, bottlenecks, thread sync)
+        - Stage 3: skill (Language Internals, Systems/Concurrency, Tooling/DevOps from parsed_skills)
         """
         avoid_str = ", ".join(existing_topics) if existing_topics else "None"
         candidate_name = resume_data.get("candidate_name", "Candidate")
@@ -288,12 +459,14 @@ Return STRICTLY in JSON format with NO markdown wrapping:
         hr_topics_str = ", ".join(resume_data.get("hr_topics", ["Teamwork", "Problem Solving"]))
 
         category_instructions = ""
-        if category == "project" and projects:
-            category_instructions = f"Ask a technical deep-dive question about one of the candidate's projects listed here: {proj_str}. Ask about technical architecture, decisions, or implementation details of a specific project."
-        elif category == "hr_behavioral":
-            category_instructions = f"Ask a real-world HR or behavioral question related to their experience or projects (e.g. handling technical conflicts, tight deadlines, handling bugs in production, team collaboration)."
+        if category == "intro":
+            category_instructions = f"STAGE 1 OPENING: Ask the classic opening: 'Walk me through your background and what you’ve been focusing on recently.' Ask candidate '{candidate_name}' to introduce themselves, summarize their background in {skills_str}, and share a brief overview of their main projects."
+        elif category == "intro_followup":
+            category_instructions = f"STAGE 1 FOLLOW-UP: Follow up once to clarify a highlight before transitioning: Ask 'You mentioned working heavily with {skills_str}—what drew you toward performance engineering or systems architecture over general application development?'"
+        elif category == "project" and projects:
+            category_instructions = f"STAGE 2 PROJECT DEEP-DIVE: Extract flagship project(s) from resume ({proj_str}). Test technical authenticity, architecture decisions, trade-offs, bottlenecks, thread synchronization, memory divergence, and design choices (e.g. 'In your parallel optimization project, how did you handle thread synchronization and memory divergence across warps?'). If previous response was vague, explicitly push for specific metrics, profiling tools (e.g. nvprof, perf, valgrind), or architectural trade-offs."
         else:
-            category_instructions = f"Ask a technical verification question on one of their core resume skills: {skills_str}."
+            category_instructions = f"STAGE 3 TECHNICAL FUNDAMENTALS: Pull directly from parsed skills ({skills_str}). Categorize into Language Internals (memory management, move semantics vs smart pointers, pointer arithmetic), Systems / Concurrency (thread contention, latency vs throughput, OpenMPI vs Ray task scheduling), or Tooling / DevOps (container isolation, orchestration, cloud provisioning). Start at Medium difficulty and adapt."
 
         prompt = f"""
 Act as an expert Technical & HR Interviewer conducting a resume-based interview for candidate '{candidate_name}'.
@@ -318,7 +491,7 @@ Return STRICTLY in JSON format with NO markdown wrapping:
   "keywords": ["<keyword1>", "<keyword2>"]
 }}
 """
-        raw_output = self._call_llm(prompt)
+        raw_output = self._call_llm_for_task("question_gen", prompt)
         if raw_output:
             try:
                 data = self._parse_json(raw_output)
@@ -336,7 +509,26 @@ Return STRICTLY in JSON format with NO markdown wrapping:
                 logger.error(f"Failed to parse LLM resume question JSON: {e}")
 
         # Intelligent Fallback Resume Question Generator
-        if category == "project" and projects:
+        if category == "intro":
+            cand_name = resume_data.get("candidate_name", "Candidate")
+            primary_tech = resume_data.get("primary_technology", "Software Engineering")
+            return {
+                "topic": "Candidate Introduction & Background",
+                "category": "intro",
+                "question": f"Welcome {cand_name}! Walk me through your background and what you’ve been focusing on recently in {primary_tech}.",
+                "expected_answer": f"Candidate introduces themselves, highlights experience with {primary_tech}, and describes key technical projects.",
+                "keywords": ["introduction", "background", primary_tech]
+            }
+        elif category == "intro_followup":
+            skills_first = resume_data.get("skills", ["distributed systems"])[0]
+            return {
+                "topic": "Background Follow-up & Specialization",
+                "category": "intro_followup",
+                "question": f"You mentioned working heavily with {skills_first} and distributed pipelines—what drew you toward performance engineering and systems architecture over general application development?",
+                "expected_answer": "Candidate articulates their motivation for performance engineering, systems architecture, and low-level optimization.",
+                "keywords": [skills_first, "performance-engineering", "systems-architecture"]
+            }
+        elif category == "project" and projects:
             proj = projects[0]
             pname = proj.get("name", "Project")
             ptest = ", ".join(proj.get("tech_stack", ["Python"]))
@@ -393,7 +585,7 @@ Generate a detailed final performance report STRICTLY in JSON format:
   ]
 }}
 """
-        raw_output = self._call_llm(prompt)
+        raw_output = self._call_llm_for_task("analysis", prompt)
         if raw_output:
             try:
                 return self._parse_json(raw_output)

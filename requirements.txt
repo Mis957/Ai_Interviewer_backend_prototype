@@ -13,3 +13,8 @@ python-dotenv>=1.0.1
 groq>=1.7.0
 pypdf>=4.0.0
 openai-whisper>=20231117
+
+#python -m uvicorn app.main:app --reload --port 8000
+#cd frontend
+#npm run dev
+

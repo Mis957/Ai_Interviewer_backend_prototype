@@ -29,6 +29,7 @@ class AudioService:
         if settings.USE_MOCK_SPEECH:
             return
         try:
+            
             import whisper
             self.whisper_model = whisper.load_model("base")
             logger.info("Loaded OpenAI Whisper base model for local STT.")
