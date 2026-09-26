@@ -94,7 +94,7 @@ export default function InterviewStudio({
       <div className="glass-card" style={{ padding: '1.25rem 2rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Track: {session.technology}</span>
-          <h2 style={{ fontSize: '1.4rem', color: '#fff' }}>Question {questionNumber} of 5</h2>
+          <h2 style={{ fontSize: '1.4rem', color: '#fff' }}>Question {questionNumber}</h2>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
