@@ -271,3 +271,14 @@ Returns overall technical score, communication score, confidence rating, strong/
 - **Score ≥ 8.0**: Upgrade difficulty (`Easy` → `Medium` → `Hard`) and ask deeper architectural questions.
 - **5.0 ≤ Score < 8.0**: Retain current difficulty level (`Medium`).
 - **Score < 5.0**: Keep difficulty `Easy`. In **Resume Mode**, perform adaptive topic rotation (`Project` → `HR/Behavioral` → `Skill`) so candidate covers their entire resume without getting stuck on a failing topic.
+
+---
+
+## 🏁 Interview Termination Criteria
+
+The interview practice session concludes based on the following criteria:
+
+1. **Manual Termination**: Candidate clicks **"END SESSION"** button at any time to conclude the interview and view their evaluation report.
+2. **Timer Expiration**: Session countdown timer reaches `00:00`.
+   - Candidate can choose **"End Interview & Get Report"** to conclude the session.
+   - *Alternatively, the candidate can choose to extend time by +5, +10, or +15 mins to continue practicing.*
