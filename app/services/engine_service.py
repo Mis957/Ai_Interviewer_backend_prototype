@@ -233,32 +233,28 @@ class InterviewEngineService:
             score_to_add=eval_result.score
         )
 
-        # Check if interview threshold reached
-        session_completed = updated_session.question_count >= self.MAX_QUESTIONS_PER_SESSION
-        next_q_payload = None
+        # Session remains active until candidate clicks "END SESSION" or timer expires
+        session_completed = False
 
-        if not session_completed:
-            # 6. Select Next Question (Resume vs Standard)
-            if getattr(session, "mode", "standard") == "resume" and getattr(session, "resume_data", None):
-                next_q_payload = self.selection_service.select_next_resume_question(
-                    session_id=session.id,
-                    resume_data=session.resume_data,
-                    current_difficulty=next_diff,
-                    last_score=eval_result.score
-                )
-            else:
-                next_q_payload = self.selection_service.select_next_question(
-                    session_id=session.id,
-                    technology=session.technology,
-                    difficulty=next_diff,
-                    target_role=session.target_role,
-                    years_of_experience=session.years_of_experience
-                )
-            # Synthesize TTS for next question
-            audio_path = await self.audio_service.text_to_speech(next_q_payload.question_text)
-            next_q_payload.audio_url = audio_path
+        # 6. Select Next Question (Resume vs Standard)
+        if getattr(session, "mode", "standard") == "resume" and getattr(session, "resume_data", None):
+            next_q_payload = self.selection_service.select_next_resume_question(
+                session_id=session.id,
+                resume_data=session.resume_data,
+                current_difficulty=next_diff,
+                last_score=eval_result.score
+            )
         else:
-            self.session_repo.update_session_state(session_id=session.id, next_difficulty=next_diff, score_to_add=0.0, status="COMPLETED")
+            next_q_payload = self.selection_service.select_next_question(
+                session_id=session.id,
+                technology=session.technology,
+                difficulty=next_diff,
+                target_role=session.target_role,
+                years_of_experience=session.years_of_experience
+            )
+        # Synthesize TTS for next question
+        audio_path = await self.audio_service.text_to_speech(next_q_payload.question_text)
+        next_q_payload.audio_url = audio_path
 
         return AnswerEvaluationResponse(
             answer_id=answer_record.id,

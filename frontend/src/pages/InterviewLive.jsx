@@ -91,24 +91,46 @@ function InterviewerBadge({ interviewer }) {
   )
 }
 
+function parseDurationSeconds(durationStr) {
+  if (typeof durationStr === 'number') return durationStr
+  if (!durationStr) return 15 * 60
+  const match = String(durationStr).match(/(\d+)/)
+  if (match) {
+    const mins = parseInt(match[1], 10)
+    if (!isNaN(mins) && mins > 0) return mins * 60
+  }
+  return 15 * 60
+}
+
 /** Session timer — top right */
-function SessionTimer({ duration, isRunning }) {
+function SessionTimer({ duration, isRunning, onTimeUp }) {
   const [elapsed, setElapsed] = useState(0)
   const intervalRef = useRef(null)
+  const hasTriggeredTimeUp = useRef(false)
+
+  useEffect(() => {
+    if (duration > elapsed) {
+      hasTriggeredTimeUp.current = false
+    }
+  }, [duration, elapsed])
 
   useEffect(() => {
     if (!isRunning) return
     intervalRef.current = setInterval(() => {
       setElapsed(prev => {
-        if (prev >= duration) {
+        if (prev + 1 >= duration) {
           clearInterval(intervalRef.current)
+          if (!hasTriggeredTimeUp.current) {
+            hasTriggeredTimeUp.current = true
+            if (onTimeUp) onTimeUp()
+          }
           return duration
         }
         return prev + 1
       })
     }, 1000)
     return () => clearInterval(intervalRef.current)
-  }, [isRunning, duration])
+  }, [isRunning, duration, onTimeUp])
 
   const remaining = Math.max(0, duration - elapsed)
   const minutes = String(Math.floor(remaining / 60)).padStart(2, '0')
@@ -118,6 +140,67 @@ function SessionTimer({ duration, isRunning }) {
     <div className="session-timer" role="timer" aria-label={`Time remaining: ${minutes}:${seconds}`}>
       <span className="timer-dot" aria-hidden="true" />
       {minutes}:{seconds}
+    </div>
+  )
+}
+
+/** Timer Expired / Extension Modal ("Time's Up!") */
+function TimerExpiredModal({ onEndSession, onExtendSession, isEnding }) {
+  const [selectedMinutes, setSelectedMinutes] = useState(5)
+
+  return (
+    <div className="interview-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="timer-expired-title">
+      <div className="interview-modal timer-expired-modal">
+        <div className="timer-expired-icon" aria-hidden="true">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <polyline points="12 6 12 12 16 14" />
+          </svg>
+        </div>
+        <h3 id="timer-expired-title">Time's Up!</h3>
+        <p>
+          Your session timer has expired. Would you like to conclude your interview and see your report, or extend your time to keep practicing?
+        </p>
+
+        {/* Extension time picker */}
+        <div className="timer-extension-box">
+          <label className="timer-extension-label">
+            Extend Time By:
+          </label>
+          <div className="timer-extension-options">
+            {[5, 10, 15].map(mins => (
+              <button
+                key={mins}
+                type="button"
+                className={`timer-extension-btn ${selectedMinutes === mins ? 'active' : ''}`}
+                onClick={() => setSelectedMinutes(mins)}
+              >
+                +{mins} mins
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="interview-modal-actions timer-expired-actions">
+          <button
+            type="button"
+            className="modal-extend-btn"
+            onClick={() => onExtendSession(selectedMinutes)}
+            disabled={isEnding}
+          >
+            Extend by +{selectedMinutes} mins &amp; Continue
+          </button>
+          
+          <button
+            type="button"
+            className="modal-cancel-btn"
+            onClick={onEndSession}
+            disabled={isEnding}
+          >
+            {isEnding ? 'Generating Report…' : 'End Interview & Get Report'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -282,6 +365,8 @@ export default function InterviewLive() {
   // ── Interview state machine ──────────────────────────────────────
   const [interviewState, setInterviewState] = useState(INTERVIEW_STATES.INITIALIZING)
   const [showEndModal,   setShowEndModal]   = useState(false)
+  const [showTimerExpiredModal, setShowTimerExpiredModal] = useState(false)
+  const [addedSeconds, setAddedSeconds]     = useState(0)
   const [isSaving,       setIsSaving]       = useState(false)
   const [isEnding,       setIsEnding]       = useState(false)
   const [timerRunning,   setTimerRunning]   = useState(false)
@@ -393,6 +478,23 @@ export default function InterviewLive() {
     audio.play().catch(err => console.warn('[InterviewLive] Replay failed:', err.message))
   }, [])
 
+  // ── Handle when timer expires ────────────────────────────────────
+  const handleTimerExpired = useCallback(() => {
+    setTimerRunning(false)
+    const audio = audioRef.current
+    if (audio) audio.pause()
+    stopMicStream()
+    setShowTimerExpiredModal(true)
+  }, [stopMicStream])
+
+  // ── Extend time option ───────────────────────────────────────────
+  const handleExtendSession = useCallback((minutes) => {
+    const extra = (minutes || 5) * 60
+    setAddedSeconds(prev => prev + extra)
+    setShowTimerExpiredModal(false)
+    setTimerRunning(true)
+  }, [])
+
   // ── End session and fetch final report from backend ──────────────
   const handleEndSession = useCallback(async () => {
     if (isEnding) return
@@ -402,9 +504,13 @@ export default function InterviewLive() {
     const audio = audioRef.current
     if (audio) audio.pause()
     stopMicStream()
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try { mediaRecorderRef.current.stop() } catch (e) {}
+    }
     clearInterval(recordingTimerRef.current)
     setTimerRunning(false)
     setShowEndModal(false)
+    setShowTimerExpiredModal(false)
 
     try {
       const report = await endInterview(sessionData.session_id)
@@ -612,6 +718,8 @@ export default function InterviewLive() {
   const isInitializing = interviewState === INTERVIEW_STATES.INITIALIZING
   const questionText   = currentQuestion?.question_text || ''
 
+  const durationSeconds = parseDurationSeconds(sessionData?.duration) + addedSeconds
+
   return (
     <div className="interview-page">
       {/*
@@ -625,7 +733,11 @@ export default function InterviewLive() {
         {/* ── Header ──────────────────────────────────────────────── */}
         <header className="interview-header">
           <InterviewerBadge interviewer={OLIVER_INTERVIEWER} />
-          <SessionTimer duration={DEFAULT_DURATION_SECONDS} isRunning={timerRunning} />
+          <SessionTimer
+            duration={durationSeconds}
+            isRunning={timerRunning && interviewState !== INTERVIEW_STATES.COMPLETED}
+            onTimeUp={handleTimerExpired}
+          />
         </header>
 
         {/* ── Main Stage ──────────────────────────────────────────── */}
@@ -746,6 +858,15 @@ export default function InterviewLive() {
         <EndSessionModal
           onCancel={() => setShowEndModal(false)}
           onConfirm={handleEndSession}
+          isEnding={isEnding}
+        />
+      )}
+
+      {/* ── Timer Expired Modal ────────────────────────────────────── */}
+      {showTimerExpiredModal && (
+        <TimerExpiredModal
+          onEndSession={handleEndSession}
+          onExtendSession={handleExtendSession}
           isEnding={isEnding}
         />
       )}

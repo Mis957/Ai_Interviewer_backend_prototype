@@ -606,6 +606,136 @@
   cursor: not-allowed;
 }
 
+/* ── Timer Expired Modal Styles ────────────────────────────── */
+.timer-expired-modal {
+  text-align: center;
+}
+
+.timer-expired-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #efe6ff, #dfd0fc);
+  color: #6023e2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px;
+}
+
+.timer-expired-modal h3 {
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.timer-expired-modal p {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.timer-extension-box {
+  background: #f8f9fe;
+  border: 1px solid #e2e7f3;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.timer-extension-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #677294;
+  margin-bottom: 10px;
+}
+
+.timer-extension-options {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.timer-extension-btn {
+  flex: 1;
+  height: 40px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid #e0d8f8;
+  background: #ffffff;
+  color: #495170;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.timer-extension-btn:hover {
+  border-color: #c4b5fd;
+  background: #faf8ff;
+  color: #6023e2;
+}
+
+.timer-extension-btn.active {
+  color: #6023e2;
+  background: #f0e9ff;
+  border: 1.5px solid #8b5cf6;
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.12);
+}
+
+.timer-expired-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.timer-expired-actions .modal-extend-btn {
+  height: 46px;
+  width: 100%;
+  border-radius: 12px;
+  border: 0;
+  background: linear-gradient(135deg, #18181b, #000000);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.timer-expired-actions .modal-extend-btn:hover {
+  background: #000000;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
+.timer-expired-actions .modal-cancel-btn {
+  height: 46px;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid #dce0eb;
+  background: #ffffff;
+  color: #4b5475;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.timer-expired-actions .modal-cancel-btn:hover {
+  background: #f4f6fa;
+}
+
+.timer-expired-actions .modal-extend-btn:disabled,
+.timer-expired-actions .modal-cancel-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* ── Initialization Overlay ───────────────────────────────────── */
 .interview-init-overlay {
   position: absolute;
