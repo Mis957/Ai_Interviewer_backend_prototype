@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite:///./interview_prototype.db"  # Fallback to local SQLite if postgres not configured
     
+    # LM Studio Local AI
+    LM_STUDIO_BASE_URL: str = "http://192.168.240.1:1234/v1"
+    LM_STUDIO_MODEL: str = "meta-llama-3.1-8b-instruct"
+    LM_STUDIO_API_KEY: str = "lm-studio"
+    
     # Gemini AI
     GEMINI_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-3.6-flash"
@@ -20,14 +25,16 @@ class Settings(BaseSettings):
     GROQ_ANALYSIS_API_KEY: str = ""
     GROQ_MODEL: str = "qwen/qwen3.8-27b"
     
-    # Task-Specific Provider Priority Chains (comma-separated list of providers: groq, gemini)
-    QUESTION_GEN_PROVIDERS: str = "groq,groq,gemini"
-    EVALUATION_PROVIDERS: str = "groq,groq,gemini"
-    ANALYSIS_PROVIDERS: str = "groq,groq,gemini"
+    # Task-Specific Provider Priority Chains (comma-separated list of providers: lm_studio, groq, gemini)
+    QUESTION_GEN_PROVIDERS: str = "lm_studio,groq,gemini"
+    EVALUATION_PROVIDERS: str = "lm_studio,groq,gemini"
+    ANALYSIS_PROVIDERS: str = "lm_studio,groq,gemini"
     
     # Storage & Audio
     AUDIO_STORAGE_DIR: str = "./audio_storage"
     USE_MOCK_SPEECH: bool = False
+    WHISPER_MODEL_NAME: str = "base"
+    WHISPER_MODELS_DIR: str = "./models/whisper"
     
     model_config = SettingsConfigDict(
         env_file=".env",

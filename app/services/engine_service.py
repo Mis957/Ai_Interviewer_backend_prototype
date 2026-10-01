@@ -1,3 +1,4 @@
+import os
 import logging
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
@@ -119,7 +120,7 @@ class InterviewEngineService:
 
         # Convert question text to speech
         audio_path = await self.audio_service.text_to_speech(first_q.question_text)
-        first_q.audio_url = audio_path
+        first_q.audio_url = audio_path if audio_path and os.path.exists(audio_path) else None
 
         return InterviewStartResponse(
             session_id=session.id,
@@ -254,7 +255,7 @@ class InterviewEngineService:
             )
         # Synthesize TTS for next question
         audio_path = await self.audio_service.text_to_speech(next_q_payload.question_text)
-        next_q_payload.audio_url = audio_path
+        next_q_payload.audio_url = audio_path if audio_path and os.path.exists(audio_path) else None
 
         return AnswerEvaluationResponse(
             answer_id=answer_record.id,

@@ -38,8 +38,9 @@ def test_single_intro_flow():
     # Q1: Introductory Question ONCE ONLY
     q1 = engine_svc.selection_service.select_next_resume_question(session.id, parsed_resume, "Medium")
     print("\nQ1 (Introductory Question ONCE ONLY):")
-    print("Topic:", q1.topic)
+    print("Category:", getattr(q1, "question_category", None) or q1.topic)
     print("Question:", q1.question_text)
+    assert q1.question_category == "intro"
 
     # Save Q1 Answer
     engine_svc.answer_repo.save_answer(
@@ -55,11 +56,12 @@ def test_single_intro_flow():
         next_difficulty="Medium"
     )
 
-    # Q2: Moves directly to Project Deep-Dive
+    # Q2: Project Architecture Overview
     q2 = engine_svc.selection_service.select_next_resume_question(session.id, parsed_resume, "Medium", last_score=8.5)
-    print("\nQ2 (Moves directly to Project Deep-Dive):")
-    print("Category/Topic:", getattr(q2, "question_category", None) or q2.topic)
+    print("\nQ2 (Project Architecture Overview):")
+    print("Category:", getattr(q2, "question_category", None) or q2.topic)
     print("Question:", q2.question_text)
+    assert q2.question_category == "project"
 
     # Save Q2 Answer
     engine_svc.answer_repo.save_answer(
@@ -75,33 +77,56 @@ def test_single_intro_flow():
         next_difficulty="Medium"
     )
 
-    # Q3: Technical Fundamentals (Skills Array)
+    # Q3: Project Technical Hurdles / Bottlenecks
     q3 = engine_svc.selection_service.select_next_resume_question(session.id, parsed_resume, "Medium", last_score=8.0)
-    print("\nQ3 (Technical Fundamentals & Skills):")
-    print("Category/Topic:", getattr(q3, "question_category", None) or q3.topic)
+    print("\nQ3 (Project Technical Hurdles):")
+    print("Category:", getattr(q3, "question_category", None) or q3.topic)
     print("Question:", q3.question_text)
+    assert q3.question_category == "project"
 
     # Save Q3 Answer
     engine_svc.answer_repo.save_answer(
         session_id=session.id,
         question_id=None,
         question_text=q3.question_text,
-        candidate_transcript="C++ std::move converts lvalue to rvalue.",
+        candidate_transcript="We encountered memory bandwidth saturation between host and device.",
+        score=8.5,
+        confidence_score=9.0,
+        feedback="Good bottleneck analysis.",
+        expected_answer="Bottleneck analysis.",
+        missing_topics=[],
+        next_difficulty="Medium"
+    )
+
+    # Q4: Project Trade-offs & Scalability
+    q4 = engine_svc.selection_service.select_next_resume_question(session.id, parsed_resume, "Medium", last_score=8.5)
+    print("\nQ4 (Project Trade-offs & Scalability):")
+    print("Category:", getattr(q4, "question_category", None) or q4.topic)
+    print("Question:", q4.question_text)
+    assert q4.question_category == "project"
+
+    # Save Q4 Answer
+    engine_svc.answer_repo.save_answer(
+        session_id=session.id,
+        question_id=None,
+        question_text=q4.question_text,
+        candidate_transcript="We balanced OpenMPI network overhead with CUDA local kernel execution.",
         score=9.0,
         confidence_score=9.0,
-        feedback="Accurate move semantics description.",
-        expected_answer="Move semantics vs smart pointers.",
+        feedback="Solid architectural trade-off explanation.",
+        expected_answer="Trade-offs explanation.",
         missing_topics=[],
         next_difficulty="Hard"
     )
 
-    # Q4: Technical Fundamentals / Deep-Dive
-    q4 = engine_svc.selection_service.select_next_resume_question(session.id, parsed_resume, "Hard", last_score=9.0)
-    print("\nQ4 (Technical Fundamentals / Tech Stack Deep-Dive):")
-    print("Category/Topic:", getattr(q4, "question_category", None) or q4.topic)
-    print("Question:", q4.question_text)
+    # Q5: Technologies Mentioned in Resume (e.g. C++ Internals / Move Semantics)
+    q5 = engine_svc.selection_service.select_next_resume_question(session.id, parsed_resume, "Hard", last_score=9.0)
+    print("\nQ5 (Technologies Mentioned - C++ Internals):")
+    print("Category:", getattr(q5, "question_category", None) or q5.topic)
+    print("Question:", q5.question_text)
+    assert q5.question_category == "technology"
 
-    print("\n=== SINGLE INTRO QUESTION FLOW VERIFIED SUCCESSFULLY ===")
+    print("\n=== RESUME 3-PHASE FLOW VERIFIED SUCCESSFULLY ===")
 
 if __name__ == "__main__":
     test_single_intro_flow()

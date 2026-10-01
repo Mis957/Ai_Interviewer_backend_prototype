@@ -27,22 +27,24 @@ class QuestionSelectionService:
         years_of_experience: Optional[str] = None
     ) -> NextQuestionPayload:
         """
-        Stage Flow & Adaptive Probing Selection Logic:
-        - Q1 (Intro Stage): 'Tell me about yourself, your technical background & recent projects'
-        - Q2 (Project Stage): Applied project engineering, architecture decisions & trade-offs
-        - Q3-Q5 (Technical Adaptive Stage):
+        Stage Flow & Adaptive Probing Selection Logic (Standard Mode):
+        - Q1 (Intro Stage): 'Tell me about yourself, your technical background & experience with {technology}'
+        - Q2 (Project Stage): Applied project engineering, architecture decisions & trade-offs in {technology}
+        - Q3+ (Technical Adaptive Stage):
+            * Core concepts & mechanisms in {technology} (e.g. functions, decorators, generators, GIL, etc.)
+            * Lasts indefinitely until the timer expires.
             * If previous score >= 7.0: 'deep_dive' into internal mechanics/edge cases of previous topic.
             * If previous score < 5.0: 'pivot' cleanly away from weak topic to another concept.
         """
         session_answers = self.answer_repo.get_answers_for_session(session_id)
         asked_q_ids = [a.question_id for a in session_answers if a.question_id]
-        asked_topics = [a.question_text[:40] for a in session_answers]
+        asked_topics = [a.question_text for a in session_answers]
         q_count = len(session_answers) + 1
 
         # Determine Interview Flow Strategy:
-        # - Q1 (q_count == 1): "intro" (Basic Introductory Opener ONCE ONLY: "Walk me through your background...")
-        # - Q2 (q_count == 2): "project" (Stage 2: Project Architecture Deep-Dive & Trade-offs)
-        # - Q3-Q5 (q_count >= 3): "technical_adaptive" (Stage 3: Technical Fundamentals & Tech Stack)
+        # - Q1 (q_count == 1): "intro" (Introductory Opener: "Tell me about yourself...")
+        # - Q2 (q_count == 2): "project" (Stage 2: Real-world Project Architecture & Trade-offs)
+        # - Q3+ (q_count >= 3): "technical_adaptive" (Stage 3: Core Technology Concepts & Internals)
         if q_count == 1:
             stage = "intro"
         elif q_count == 2:
@@ -65,26 +67,7 @@ class QuestionSelectionService:
             elif last_ans.score < 5.0:
                 adaptive_mode = "pivot"
 
-        # Step 1: Database Search (Bypassed for Q1 Intro to generate live dynamic interviewer opener)
-        if stage != "intro":
-            db_question = self.question_repo.find_matching_question(
-                technology=technology,
-                difficulty=difficulty,
-                excluded_ids=asked_q_ids
-            )
-
-            if db_question and adaptive_mode != "deep_dive":
-                return NextQuestionPayload(
-                    question_id=db_question.id,
-                    generated_question_id=None,
-                    technology=db_question.technology,
-                    topic=db_question.topic,
-                    difficulty=db_question.difficulty,
-                    question_text=db_question.question,
-                    is_llm_generated=False
-                )
-
-        # Step 2: Dynamic LLM Question Generation with Stage & Adaptive Rules
+        # Step 1: Dynamic LLM Question Generation with Stage & Adaptive Rules (Primary)
         gen_data = self.gemini_service.generate_dynamic_question(
             technology=technology,
             difficulty=difficulty,
@@ -97,25 +80,47 @@ class QuestionSelectionService:
             previous_score=previous_score
         )
 
-        saved_gen_q = self.gen_question_repo.save_generated_question(
-            session_id=session_id,
-            technology=technology,
-            topic=gen_data.get("topic", f"{technology} Topic"),
-            difficulty=difficulty,
-            question_text=gen_data.get("question", ""),
-            expected_answer=gen_data.get("expected_answer", ""),
-            keywords=gen_data.get("keywords", [])
-        )
+        if gen_data and gen_data.get("question"):
+            saved_gen_q = self.gen_question_repo.save_generated_question(
+                session_id=session_id,
+                technology=technology,
+                topic=gen_data.get("topic", f"{technology} Topic"),
+                difficulty=difficulty,
+                question_text=gen_data.get("question", ""),
+                expected_answer=gen_data.get("expected_answer", ""),
+                keywords=gen_data.get("keywords", [])
+            )
+            return NextQuestionPayload(
+                question_id=None,
+                generated_question_id=saved_gen_q.id,
+                technology=saved_gen_q.technology,
+                topic=saved_gen_q.topic,
+                difficulty=saved_gen_q.difficulty,
+                question_text=saved_gen_q.question_text,
+                is_llm_generated=True,
+                question_category=stage
+            )
 
-        return NextQuestionPayload(
-            question_id=None,
-            generated_question_id=saved_gen_q.id,
-            technology=saved_gen_q.technology,
-            topic=saved_gen_q.topic,
-            difficulty=saved_gen_q.difficulty,
-            question_text=saved_gen_q.question_text,
-            is_llm_generated=True
-        )
+        # Step 2: Database Fallback if LLM generation was unavailable
+        if stage != "intro":
+            db_question = self.question_repo.find_matching_question(
+                technology=technology,
+                difficulty=difficulty,
+                excluded_ids=asked_q_ids
+            )
+            if db_question:
+                return NextQuestionPayload(
+                    question_id=db_question.id,
+                    generated_question_id=None,
+                    technology=db_question.technology,
+                    topic=db_question.topic,
+                    difficulty=db_question.difficulty,
+                    question_text=db_question.question,
+                    is_llm_generated=False,
+                    question_category=stage
+                )
+
+        raise RuntimeError("Failed to generate or retrieve interview question.")
 
     def select_next_resume_question(
         self,
@@ -125,27 +130,66 @@ class QuestionSelectionService:
         last_score: Optional[float] = None
     ) -> NextQuestionPayload:
         """
-        Adaptive Resume Question Selection:
-        - Q1 (q_count == 0): 'intro' (Introductory question ONCE ONLY)
-        - Q2 (q_count == 1): 'project' (Flagship project deep-dive)
-        - Q3+ (q_count >= 2): 'skill' (Technical fundamentals pulled from parsed_skills)
+        Adaptive Resume Question Selection Flow:
+        - Phase 1: Q1 (q_count == 0) -> "intro" ("Tell me about yourself and your technical background")
+        - Phase 2: Q2 to Q(1+N) -> "project" (Covering all resume projects up to a maximum of 5 questions,
+                                             addressing architecture, bottlenecks, and trade-offs)
+        - Phase 3: Following questions -> "technology" (Core concepts for technologies mentioned,
+                                                       e.g., functions/decorators in Python, indexing in SQL,
+                                                       lasting until the timer runs out)
         """
         session_answers = self.answer_repo.get_answers_for_session(session_id)
-        asked_topics = [a.question_text[:30] for a in session_answers]
+        asked_topics = [a.question_text for a in session_answers]
         q_count = len(session_answers)
 
-        # Interview Flow Strategy (Resume Mode):
-        # Q1 (q_count == 0) -> "intro" (Basic Introductory Opener ONCE ONLY)
-        # Q2 (q_count == 1) -> "project" (Flagship Project Deep-Dive)
-        # Q3-Q5 (q_count >= 2) -> "skill" (Technical Fundamentals & parsed_skills)
+        projects = resume_data.get("projects") or []
+        skills = resume_data.get("skills") or []
+        primary_tech = resume_data.get("primary_technology", "Python")
+
+        # Normalize candidate technologies list
+        ordered_skills = []
+        if primary_tech and primary_tech not in ordered_skills:
+            ordered_skills.append(primary_tech)
+        for s in skills:
+            if s and s not in ordered_skills:
+                ordered_skills.append(s)
+        if not ordered_skills:
+            ordered_skills = ["Python"]
+
+        # Calculate project questions budget:
+        # User requirement: maximum 5 questions such that all projects are covered and all questions related to them
+        num_projects = len(projects)
+        if num_projects == 0:
+            total_project_questions = 0
+        elif num_projects == 1:
+            total_project_questions = 3  # Thorough coverage of the project: overview, hurdle, and trade-offs
+        else:
+            total_project_questions = min(5, max(num_projects, 5))  # Exactly 5 questions (max 5) covering all projects
+
+        # 3-Phase Flow State Assignment
         if q_count == 0:
             next_category = "intro"
             next_difficulty = current_difficulty
-        elif q_count == 1:
+            target_project = None
+            project_aspect = None
+            target_technology = None
+        elif 1 <= q_count <= total_project_questions:
             next_category = "project"
             next_difficulty = current_difficulty
+            proj_idx = q_count - 1
+            target_project = projects[proj_idx % num_projects]
+            if proj_idx < num_projects:
+                project_aspect = "overview"  # Initial architecture & responsibilities
+            else:
+                round_num = proj_idx // num_projects
+                if round_num == 1:
+                    project_aspect = "hurdle_or_bottleneck"  # Challenges, bugs, concurrency
+                else:
+                    project_aspect = "tradeoffs_or_scaling"  # Engineering trade-offs and scaling
+            target_technology = None
         else:
-            next_category = "skill"
+            # Phase 3: Technologies & Core Concepts (functions, decorators, generators, etc. until timer ends)
+            next_category = "technology"
             if last_score is not None and last_score < 5.0:
                 next_difficulty = "Easy"
             elif last_score is not None and last_score >= 8.0:
@@ -153,20 +197,52 @@ class QuestionSelectionService:
             else:
                 next_difficulty = current_difficulty
 
-        # Fallback if no projects exist in resume data
-        if next_category == "project" and not resume_data.get("projects"):
-            next_category = "skill"
+            tech_idx = q_count - total_project_questions - 1
+            target_technology = ordered_skills[tech_idx % len(ordered_skills)]
+            target_project = None
+            project_aspect = None
 
-        # Step 1: Check Database for matching pre-curated question (Bypassed for Q1 Intro)
+        # Step 1: LLM Dynamic Resume Question Generation (Primary)
+        gen_data = self.gemini_service.generate_resume_question(
+            resume_data=resume_data,
+            category=next_category,
+            difficulty=next_difficulty,
+            existing_topics=asked_topics,
+            target_project=target_project,
+            project_aspect=project_aspect,
+            target_technology=target_technology
+        )
+
+        if gen_data and gen_data.get("question"):
+            saved_gen_q = self.gen_question_repo.save_generated_question(
+                session_id=session_id,
+                technology=target_technology or primary_tech or "Resume-Based",
+                topic=gen_data.get("topic", f"Resume {next_category.title()}"),
+                difficulty=next_difficulty,
+                question_text=gen_data.get("question", ""),
+                expected_answer=gen_data.get("expected_answer", ""),
+                keywords=gen_data.get("keywords", [])
+            )
+            return NextQuestionPayload(
+                question_id=None,
+                generated_question_id=saved_gen_q.id,
+                technology=saved_gen_q.technology,
+                topic=saved_gen_q.topic,
+                difficulty=saved_gen_q.difficulty,
+                question_text=saved_gen_q.question_text,
+                is_llm_generated=True,
+                question_category=next_category
+            )
+
+        # Step 2: Database Fallback if LLM is unavailable
         if next_category != "intro":
             asked_q_ids = [a.question_id for a in session_answers if a.question_id]
-            primary_tech = resume_data.get("primary_technology", "Resume-Based")
+            primary_tech = target_technology or resume_data.get("primary_technology", "Resume-Based")
             db_question = self.question_repo.find_matching_question(
                 technology=primary_tech,
                 difficulty=next_difficulty,
                 excluded_ids=asked_q_ids
             )
-
             if db_question:
                 return NextQuestionPayload(
                     question_id=db_question.id,
@@ -179,32 +255,5 @@ class QuestionSelectionService:
                     question_category=next_category
                 )
 
-        # Step 2: LLM Dynamic Generation if not found in DB
-        gen_data = self.gemini_service.generate_resume_question(
-            resume_data=resume_data,
-            category=next_category,
-            difficulty=next_difficulty,
-            existing_topics=asked_topics
-        )
-
-        saved_gen_q = self.gen_question_repo.save_generated_question(
-            session_id=session_id,
-            technology="Resume-Based",
-            topic=gen_data.get("topic", f"Resume {next_category.title()}"),
-            difficulty=next_difficulty,
-            question_text=gen_data.get("question", ""),
-            expected_answer=gen_data.get("expected_answer", ""),
-            keywords=gen_data.get("keywords", [])
-        )
-
-        return NextQuestionPayload(
-            question_id=None,
-            generated_question_id=saved_gen_q.id,
-            technology=saved_gen_q.technology,
-            topic=saved_gen_q.topic,
-            difficulty=saved_gen_q.difficulty,
-            question_text=saved_gen_q.question_text,
-            is_llm_generated=True,
-            question_category=next_category
-        )
+        raise RuntimeError("Failed to generate or retrieve resume interview question.")
 

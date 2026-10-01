@@ -35,6 +35,12 @@ test_audio/*
 *.mp3
 *.wav
 
+# Large Binaries & Models
+ffmpeg.exe
+*.exe
+*.zip
+models/
+
 # Database / SQLite
 *.db
 *.sqlite

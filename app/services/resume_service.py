@@ -231,11 +231,16 @@ Act as an expert Technical Recruiter and Engineering Manager. Parse this resume 
 Provide output STRICTLY as a single valid JSON object with NO markdown formatting or commentary:
 {{
   "candidate_name": "<Candidate Name or 'Candidate'>",
-  "primary_technology": "<Primary domain e.g. Python, Fullstack, Java>",
+  "primary_technology": "<Primary domain e.g. Python, Fullstack, Java, C++>",
   "skills": ["<Skill 1>", "<Skill 2>", "<Skill 3>"],
   "projects": [
     {{
-      "name": "<Project Name>",
+      "name": "<Project 1 Name>",
+      "tech_stack": ["<Tech 1>", "<Tech 2>"],
+      "description": "<Concise summary of project goal>"
+    }},
+    {{
+      "name": "<Project 2 Name (Extract ALL distinct projects in the resume, up to 5)>",
       "tech_stack": ["<Tech 1>", "<Tech 2>"],
       "description": "<Concise summary of project goal>"
     }}
@@ -246,6 +251,7 @@ Provide output STRICTLY as a single valid JSON object with NO markdown formattin
     "Architecture Design Trade-offs and Lessons Learned"
   ]
 }}
+IMPORTANT: Extract ALL distinct projects mentioned in the candidate's resume (up to 5 projects), and all technical skills/technologies mentioned.
 """
             raw_output = gemini_svc._call_llm_for_task("analysis", prompt, "You parse resumes for technical interviewing. Respond strictly in valid JSON.")
             if raw_output:

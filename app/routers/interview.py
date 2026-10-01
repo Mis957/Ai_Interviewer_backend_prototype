@@ -1,6 +1,9 @@
 import os
+import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Request
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.services.engine_service import InterviewEngineService
@@ -70,6 +73,7 @@ async def start_interview(
             filename=filename
         )
     except Exception as e:
+        logger.exception("start_interview failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/question", response_model=NextQuestionPayload)
@@ -91,7 +95,7 @@ async def get_current_question(
         difficulty=session.current_difficulty
     )
     audio_path = await engine.audio_service.text_to_speech(question_payload.question_text)
-    question_payload.audio_url = audio_path
+    question_payload.audio_url = audio_path if audio_path and os.path.exists(audio_path) else None
     return question_payload
 
 @router.post("/answer", response_model=AnswerEvaluationResponse)
@@ -131,7 +135,7 @@ async def submit_answer(
                 final_text_answer = transcribed_text
 
         if not final_text_answer.strip():
-            raise HTTPException(status_code=400, detail="Candidate answer text or audio recording is required.")
+            raise HTTPException(status_code=400, detail="No speech detected in your recording. Please check your microphone and speak clearly.")
 
         return await engine.submit_answer(
             session_id=session_id,

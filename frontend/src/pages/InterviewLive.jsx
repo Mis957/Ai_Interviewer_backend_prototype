@@ -570,11 +570,18 @@ export default function InterviewLive() {
       const actualMime = recordingMimeRef.current || 'audio/webm'
       const blob = new Blob(audioChunksRef.current, { type: actualMime })
 
+      if (blob.size < 500) {
+        console.warn('[InterviewLive] Audio recording too short or empty:', blob.size)
+        setSubmitError('No audio detected. Please click Record, speak your answer, and then click Done.')
+        setInterviewState(INTERVIEW_STATES.LISTENING)
+        return
+      }
+
       // Submit to backend
       await handleSubmitAnswer(blob, actualMime)
     }
 
-    recorder.start()
+    recorder.start(250)
     setInterviewState(INTERVIEW_STATES.RECORDING)
     setRecordingSeconds(0)
 
@@ -587,13 +594,20 @@ export default function InterviewLive() {
   // ── Stop recording ───────────────────────────────────────────────
   const handleStopRecording = useCallback(() => {
     if (interviewState !== INTERVIEW_STATES.RECORDING) return
-    if (!mediaRecorderRef.current) return
+    const recorder = mediaRecorderRef.current
+    if (!recorder) return
 
     // Transition immediately so the user sees PROCESSING
     setInterviewState(INTERVIEW_STATES.PROCESSING)
 
-    // recorder.onstop → handleSubmitAnswer
-    mediaRecorderRef.current.stop()
+    if (recorder.state === 'recording') {
+      try {
+        recorder.requestData()
+      } catch (e) {
+        console.warn('[InterviewLive] requestData error:', e)
+      }
+      recorder.stop()
+    }
   }, [interviewState])
 
   // ── Submit answer to backend ─────────────────────────────────────
