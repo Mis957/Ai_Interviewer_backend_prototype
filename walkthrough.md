@@ -16,7 +16,7 @@ AI Interview Readiness Platform
 │   ├── Clean Architecture (Routers -> Services -> Repositories -> Models)
 │   ├── State Engine (Difficulty Escalation Rules: >=8 up, >=5 stay, <5 down)
 │   ├── Gemini AI Integration (Answer Evaluation, Fallback Question Gen, Final Synthesis)
-│   ├── Speech Engine (Whisper STT + Edge-TTS)
+│   ├── Speech Engine (Whisper STT + Edge-TTS/offline pyttsx3 TTS)
 │   └── Self-Learning Engine (Auto-promotes generated questions score >= 5 to Question Bank)
 │
 └── Frontend (Vite + React - Port 3000)

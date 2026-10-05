@@ -86,19 +86,25 @@ class AudioService:
 
     async def text_to_speech(self, text: str, voice: str = "en-US-ChristopherNeural") -> str:
         """
-        Converts question text into speech (.mp3 file) using edge-tts.
-        Caches generated audio based on deterministic text hash to avoid re-generating existing audio.
+        Converts text to speech, preferring Edge TTS and falling back to local system TTS.
         Returns the file path of the generated or cached audio file.
         """
+        if not text.strip():
+            return ""
+
         clean_text = text.strip().lower()
         text_hash = hashlib.md5(f"{voice}_{clean_text}".encode("utf-8")).hexdigest()[:12]
         filename = f"tts_{text_hash}.mp3"
         filepath = os.path.join(self.storage_dir, filename)
+        offline_filepath = os.path.join(self.storage_dir, f"tts_{text_hash}.wav")
 
         # Instant Cache Check: Only reuse if file exists and has valid audio size (> 500 bytes)
         if os.path.exists(filepath) and os.path.getsize(filepath) > 500:
             logger.info(f"Reusing cached TTS audio file for question: {filename}")
             return filepath
+        if os.path.exists(offline_filepath) and os.path.getsize(offline_filepath) > 500:
+            logger.info(f"Reusing cached offline TTS audio file: {offline_filepath}")
+            return offline_filepath
 
         # Try Edge-TTS with retry
         for attempt in range(3):
@@ -114,14 +120,61 @@ class AudioService:
                 if attempt < 2:
                     await asyncio.sleep(0.5)
 
-        logger.warning(f"Edge-TTS generation failed for text: '{text[:50]}...'. Returning empty audio path.")
-        # If generation failed, remove any partial corrupt file so it can retry later
+        logger.info("Edge-TTS unavailable; trying offline system text-to-speech.")
         if os.path.exists(filepath):
             try:
                 os.remove(filepath)
             except OSError:
                 pass
+
+        try:
+            generated = await asyncio.to_thread(
+                self._synthesize_offline, text, offline_filepath
+            )
+            if generated:
+                logger.info(f"Generated offline TTS audio file: {offline_filepath}")
+                return offline_filepath
+            logger.error("Offline TTS completed without producing a valid WAV file.")
+        except Exception:
+            logger.exception("Offline TTS generation failed.")
+
+        if os.path.exists(offline_filepath):
+            try:
+                os.remove(offline_filepath)
+            except OSError:
+                logger.warning("Could not remove incomplete offline TTS file: %s", offline_filepath)
         return ""
+
+    @staticmethod
+    def _synthesize_offline(text: str, filepath: str) -> bool:
+        """Generate a WAV file using an installed offline system speech engine."""
+        import pyttsx3
+
+        pythoncom = None
+        if os.name == "nt":
+            import pythoncom as windows_com
+
+            pythoncom = windows_com
+            pythoncom.CoInitialize()
+
+        try:
+            engine = pyttsx3.init()
+            engine.save_to_file(text, filepath)
+            engine.runAndWait()
+        finally:
+            if pythoncom is not None:
+                pythoncom.CoUninitialize()
+
+        if not os.path.exists(filepath) or os.path.getsize(filepath) <= 500:
+            return False
+
+        import wave
+
+        try:
+            with wave.open(filepath, "rb") as audio_file:
+                return audio_file.getnframes() > 0
+        except (wave.Error, EOFError):
+            return False
 
     def speech_to_text(self, audio_file_path: str) -> str:
         """

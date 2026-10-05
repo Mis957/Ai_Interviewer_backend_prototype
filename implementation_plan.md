@@ -13,8 +13,8 @@ The **AI Interview Readiness Platform** uses a **Deterministic Interview Engine*
    - *Why*: Standardizes complex querying logic (e.g., topic matching, difficulty filtering, excluding already asked questions in the session).
 4. **Hybrid Question Selection (Database First, LLM Fallback)**:
    - *Why*: Maximizes speed, consistency, and lowers API cost by consuming pre-vetted domain questions from PostgreSQL. Recourses to Gemini only when database questions for a given topic/difficulty are exhausted.
-5. **Asynchronous Audio Pipeline (Edge-TTS & Whisper)**:
-   - *Why*: `edge-tts` provides high-quality neural voice synthesis without paid API keys. Whisper (via local `openai-whisper` / `faster-whisper`) provides robust offline/local Speech-To-Text transcription.
+5. **Asynchronous Audio Pipeline (Edge-TTS, offline pyttsx3 & Whisper)**:
+   - *Why*: `edge-tts` provides high-quality neural voice synthesis when online; `pyttsx3` uses an installed system voice when offline. Whisper (via local `openai-whisper` / `faster-whisper`) provides robust offline/local Speech-To-Text transcription.
 
 ---
 
@@ -23,7 +23,7 @@ The **AI Interview Readiness Platform** uses a **Deterministic Interview Engine*
 > [!IMPORTANT]
 > **Key Configuration Dependencies**:
 > 1. **Gemini API Key**: Requires `GEMINI_API_KEY` set in `.env` (using Google GenAI SDK `google-genai` / `google-generativeai`).
-> 2. **Audio Dependencies**: Speech-to-Text (Whisper) relies on PyTorch & ffmpeg; fallback text handling is built-in if audio dependencies are absent. Text-to-Speech uses `edge-tts`.
+> 2. **Audio Dependencies**: Speech-to-Text (Whisper) relies on PyTorch & ffmpeg; fallback text handling is built-in if audio dependencies are absent. Text-to-Speech uses `edge-tts` online and `pyttsx3` with an installed system voice offline.
 > 3. **Database URL**: Configured for Supabase PostgreSQL via `DATABASE_URL` with SQLAlchemy async or sync engine.
 
 ---
@@ -54,7 +54,7 @@ Backend_Prototype/
 │   ├── services/
 │   │   ├── __init__.py
 │   │   ├── gemini_service.py   # Gemini integration (Eval, Gen, Final Report)
-│   │   ├── audio_service.py    # STT (Whisper) & TTS (Edge-TTS) integration
+│   │   ├── audio_service.py    # STT (Whisper) & TTS (Edge-TTS/offline pyttsx3) integration
 │   │   ├── selection_service.py# Hybrid question selection logic
 │   │   └── engine_service.py   # Interview Engine State Machine & Orchestration
 │   ├── routers/
@@ -137,7 +137,7 @@ sequenceDiagram
     participant Engine as Interview Engine Service
     participant QRepo as Question Repository
     participant Gemini as Gemini AI Service
-    participant TTS as Edge-TTS Service
+    participant TTS as Edge-TTS with offline system TTS fallback
     participant STT as Whisper STT Service
 
     Candidate->>Router: POST /interview/start (tech="Python")

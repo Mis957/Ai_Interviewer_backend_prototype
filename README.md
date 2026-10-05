@@ -1,6 +1,6 @@
 # AI Interview Readiness Platform - Backend Engine
 
-A deterministic, state-machine driven **AI Interview Engine** and **Resume Screening** backend built with **FastAPI**, **SQLAlchemy**, **Supabase PostgreSQL** **Google Gemini AI / Groq AI**, **Edge-TTS**, and **Whisper (STT)** following clean architecture principles.
+A deterministic, state-machine driven **AI Interview Engine** and **Resume Screening** backend built with **FastAPI**, **SQLAlchemy**, **Supabase PostgreSQL**, **Google Gemini AI / Groq AI**, **Edge-TTS with offline pyttsx3 fallback**, and **Whisper (STT)** following clean architecture principles.
 
 ---
 
@@ -13,9 +13,9 @@ A deterministic, state-machine driven **AI Interview Engine** and **Resume Scree
 - **Interactive OpenAPI / Swagger UI Dropdowns**: Native Python Enums for `mode` (`standard` | `resume`) and `initial_difficulty` (`Easy` | `Medium` | `Hard`) rendering interactive dropdown menus in Swagger UI.
 - **Adaptive Topic Rotation**: In Resume-Based mode, if candidate struggles ($\text{Score} < 5.0$), the engine rotates topics (`Project` $\rightarrow$ `HR/Behavioral` $\rightarrow$ `Skill`) at `Easy` level so candidate covers their entire resume without getting stuck on a single failing topic.
 - **AI Resume Screening & Evaluation**: Upload candidate resumes (`.pdf`, `.txt`, `.docx`) to extract details, technical skills, projects, and receive an AI-generated assessment of **Strengths**, **Weaknesses / Skill Gaps**, **Overall Score (0-100)**, **Actionable Recommendations**, and **Suggested Technology Tracks**.
-- **Supabase PostgreSQL & SQLite Auto-Fallback**: Persistent database storage with automatic fallback to local SQLite database if remote PostgreSQL is unreachable, plus automatic schema migrations for missing columns.
+- **Supabase PostgreSQL & Offline Supabase Failover**: Uses hosted PostgreSQL when available, then fails over to local Supabase PostgreSQL on connection loss. The local database receives the same SQLAlchemy schema automatically.
 - **Hybrid Question Selection**: Checks pre-vetted domain questions from the database first, falling back to LLM dynamic generation only when database questions are exhausted, saving newly generated questions to the database automatically.
-- **Asynchronous Speech Pipeline**: Neural Text-To-Speech powered by `edge-tts` and Speech-To-Text via Groq Whisper API.
+- **Speech Pipeline**: Text-to-speech prefers `edge-tts` and falls back to offline `pyttsx3` using an installed system voice; speech-to-text uses Groq Whisper API with a local Whisper fallback.
 
 ---
 
@@ -42,7 +42,7 @@ Ai_Interviewer_backend_prototype/
 │   ├── services/
 │   │   ├── gemini_service.py   # Groq / Gemini AI (Evaluation, Dynamic Generation, Reports)
 │   │   ├── resume_service.py   # Resume Parsing (PDF/TXT/DOCX) & AI Screening
-│   │   ├── audio_service.py    # TTS (Edge-TTS) & STT (Groq Whisper) services
+│   │   ├── audio_service.py    # TTS (Edge-TTS/offline pyttsx3) & STT (Groq/local Whisper)
 │   │   ├── selection_service.py# Hybrid DB-first / LLM-fallback & Adaptive Topic Rotation
 │   │   └── engine_service.py   # State Machine Orchestrator & Difficulty scaling
 │   ├── routers/
@@ -64,6 +64,7 @@ Refer to the `.env.example` file for `.env` configurations:
 
 ```env
 PROJECT_NAME="AI Interview Readiness Platform Engine"
+OFFLINE_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 DATABASE_URL="postgresql://postgres.user:password@aws-0-ap-southeast-2.pooler.supabase.com:6543/postgres"
 
 GEMINI_API_KEY="your-gemini-api-key-here"
@@ -75,6 +76,20 @@ GROQ_MODEL="groq/compound-mini"
 AUDIO_STORAGE_DIR="./audio_storage"
 USE_MOCK_SPEECH=False
 ```
+
+### Local Supabase Offline Database
+
+The offline database uses the Supabase CLI's local Postgres service (port `54322` from `supabase/config.toml`). Install Docker and the Supabase CLI, then start the local stack before launching the backend:
+
+```powershell
+supabase start
+```
+
+Set `OFFLINE_DATABASE_URL` if you changed the default local port or Postgres credentials. When the hosted `DATABASE_URL` cannot be reached, the backend switches to local Supabase and creates or updates its tables from the same SQLAlchemy models. It stays pinned to local Supabase for the life of that backend process, even if the hosted database becomes reachable again; restart the backend to select the hosted database again. Offline-created rows are not automatically synchronized to the hosted database.
+
+### Offline Text-to-Speech
+
+Question audio is generated with Edge TTS when its online service is reachable. If it is unavailable, the backend uses `pyttsx3` and a speech voice installed on the operating system to generate a local WAV file. On Windows, this uses the installed Windows SAPI voices; the offline voice may sound different from Edge's neural voice. Whisper is used for speech-to-text and cannot synthesize speech. Install Python dependencies with `python -m pip install -r requirements.txt`.
 
 ---
 
@@ -268,9 +283,11 @@ Returns overall technical score, communication score, confidence rating, strong/
 
 ## 📈 Difficulty Transition & Adaptive Topic Rotation Rules
 
-- **Score ≥ 8.0**: Upgrade difficulty (`Easy` → `Medium` → `Hard`) and ask deeper architectural questions.
-- **5.0 ≤ Score < 8.0**: Retain current difficulty level (`Medium`).
-- **Score < 5.0**: Keep difficulty `Easy`. In **Resume Mode**, perform adaptive topic rotation (`Project` → `HR/Behavioral` → `Skill`) so candidate covers their entire resume without getting stuck on a failing topic.
+- **Resume interview order**: Candidate introduction → questions about resume projects (up to five when there are multiple projects; three for one project) → technical questions drawn from listed skills and project tech stacks.
+- **Score ≥ 8.0**: Ask a harder or deeper next question (`Hard`), including a focused follow-up where appropriate.
+- **5.0 ≤ Score < 8.0**: Set the next question to `Medium` and build on demonstrated knowledge.
+- **Score < 5.0**: Set the next question to `Easy` and revisit the area at a more foundational level without repeating the exact question.
+- In the technical phase, rotate through each technology and progress its questions from fundamentals toward advanced topics. The latest answer score guides the next question's difficulty and depth.
 
 ---
 

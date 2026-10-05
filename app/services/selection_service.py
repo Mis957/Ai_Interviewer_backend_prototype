@@ -29,9 +29,9 @@ class QuestionSelectionService:
         """
         Stage Flow & Adaptive Probing Selection Logic (Standard Mode):
         - Q1 (Intro Stage): 'Tell me about yourself, your technical background & experience with {technology}'
-        - Q2 (Project Stage): Applied project engineering, architecture decisions & trade-offs in {technology}
+        - Q2 (Project Stage): A concrete implementation or problem-solving example in {technology}
         - Q3+ (Technical Adaptive Stage):
-            * Core concepts & mechanisms in {technology} (e.g. functions, decorators, generators, GIL, etc.)
+            * Rotates through concepts, debugging, performance, concurrency/reliability, and trade-offs
             * Lasts indefinitely until the timer expires.
             * If previous score >= 7.0: 'deep_dive' into internal mechanics/edge cases of previous topic.
             * If previous score < 5.0: 'pivot' cleanly away from weak topic to another concept.
@@ -77,7 +77,8 @@ class QuestionSelectionService:
             stage=stage,
             adaptive_mode=adaptive_mode,
             previous_topic=previous_topic,
-            previous_score=previous_score
+            previous_score=previous_score,
+            question_sequence=max(0, q_count - 3)
         )
 
         if gen_data and gen_data.get("question"):
@@ -132,27 +133,54 @@ class QuestionSelectionService:
         """
         Adaptive Resume Question Selection Flow:
         - Phase 1: Q1 (q_count == 0) -> "intro" ("Tell me about yourself and your technical background")
-        - Phase 2: Q2 to Q(1+N) -> "project" (Covering all resume projects up to a maximum of 5 questions,
-                                             addressing architecture, bottlenecks, and trade-offs)
+        - Phase 2: Q2 to Q(1+N) -> "project" (Covering concrete implementation, challenges, and trade-offs)
         - Phase 3: Following questions -> "technology" (Core concepts for technologies mentioned,
                                                        e.g., functions/decorators in Python, indexing in SQL,
-                                                       lasting until the timer runs out)
+                                                       rotating through varied technical question angles)
         """
         session_answers = self.answer_repo.get_answers_for_session(session_id)
         asked_topics = [a.question_text for a in session_answers]
         q_count = len(session_answers)
+        next_difficulty = current_difficulty
+        if last_score is not None:
+            if last_score >= 8.0:
+                next_difficulty = "Hard"
+            elif last_score >= 5.0:
+                next_difficulty = "Medium"
+            else:
+                next_difficulty = "Easy"
 
         projects = resume_data.get("projects") or []
         skills = resume_data.get("skills") or []
         primary_tech = resume_data.get("primary_technology", "Python")
 
-        # Normalize candidate technologies list
+        # Include project stacks as well as listed skills so every resume technology
+        # can be selected during the technical phase.
         ordered_skills = []
-        if primary_tech and primary_tech not in ordered_skills:
-            ordered_skills.append(primary_tech)
-        for s in skills:
-            if s and s not in ordered_skills:
-                ordered_skills.append(s)
+
+        def add_technology(value):
+            if not isinstance(value, str):
+                return
+            technology = value.strip()
+            if technology and technology.casefold() not in {
+                existing.casefold() for existing in ordered_skills
+            }:
+                ordered_skills.append(technology)
+
+        add_technology(primary_tech)
+        if isinstance(skills, str):
+            skills = [skills]
+        for skill in skills:
+            add_technology(skill)
+        for project in projects:
+            if not isinstance(project, dict):
+                continue
+            project_stack = project.get("tech_stack") or []
+            if isinstance(project_stack, str):
+                project_stack = [project_stack]
+            for technology in project_stack:
+                add_technology(technology)
+
         if not ordered_skills:
             ordered_skills = ["Python"]
 
@@ -169,13 +197,11 @@ class QuestionSelectionService:
         # 3-Phase Flow State Assignment
         if q_count == 0:
             next_category = "intro"
-            next_difficulty = current_difficulty
             target_project = None
             project_aspect = None
             target_technology = None
         elif 1 <= q_count <= total_project_questions:
             next_category = "project"
-            next_difficulty = current_difficulty
             proj_idx = q_count - 1
             target_project = projects[proj_idx % num_projects]
             if proj_idx < num_projects:
@@ -190,15 +216,10 @@ class QuestionSelectionService:
         else:
             # Phase 3: Technologies & Core Concepts (functions, decorators, generators, etc. until timer ends)
             next_category = "technology"
-            if last_score is not None and last_score < 5.0:
-                next_difficulty = "Easy"
-            elif last_score is not None and last_score >= 8.0:
-                next_difficulty = "Hard" if current_difficulty == "Medium" else "Medium"
-            else:
-                next_difficulty = current_difficulty
-
             tech_idx = q_count - total_project_questions - 1
             target_technology = ordered_skills[tech_idx % len(ordered_skills)]
+            # Progress each technology independently as the stack rotates.
+            technology_sequence = tech_idx // len(ordered_skills)
             target_project = None
             project_aspect = None
 
@@ -210,7 +231,13 @@ class QuestionSelectionService:
             existing_topics=asked_topics,
             target_project=target_project,
             project_aspect=project_aspect,
-            target_technology=target_technology
+            target_technology=target_technology,
+            last_score=last_score,
+            question_sequence=(
+                technology_sequence
+                if next_category == "technology"
+                else 0
+            )
         )
 
         if gen_data and gen_data.get("question"):
@@ -256,4 +283,3 @@ class QuestionSelectionService:
                 )
 
         raise RuntimeError("Failed to generate or retrieve resume interview question.")
-

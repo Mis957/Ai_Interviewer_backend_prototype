@@ -1,6 +1,6 @@
 import sys
 from sqlalchemy.orm import Session
-from app.core.database import SessionLocal, engine, Base
+from app.core.database import create_db_session, get_active_engine, Base
 from app.models.question import Question
 
 INITIAL_QUESTIONS = [
@@ -102,8 +102,8 @@ INITIAL_QUESTIONS = [
 ]
 
 def seed_database():
-    Base.metadata.create_all(bind=engine)
-    db: Session = SessionLocal()
+    Base.metadata.create_all(bind=get_active_engine())
+    db: Session = create_db_session()
     try:
         existing_count = db.query(Question).count()
         if existing_count > 0:

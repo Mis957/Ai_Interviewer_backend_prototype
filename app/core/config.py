@@ -6,7 +6,8 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     
     # Database
-    DATABASE_URL: str = "sqlite:///./interview_prototype.db"  # Fallback to local SQLite if postgres not configured
+    DATABASE_URL: str = "sqlite:///./interview_prototype.db"
+    OFFLINE_DATABASE_URL: str = "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
     
     # LM Studio Local AI
     LM_STUDIO_BASE_URL: str = "http://192.168.240.1:1234/v1"

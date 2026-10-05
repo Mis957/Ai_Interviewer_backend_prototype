@@ -1,17 +1,16 @@
 import os
-import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
-from app.core.database import engine, Base
+from app.core.database import (
+    get_active_engine,
+    initialize_database_schema,
+    is_using_offline_database,
+)
 from app.routers import interview_router, questions_router, analytics_router, resume_router
 
-# Ensure tables are created on startup (with graceful fallback if remote DB is paused/unreachable)
-try:
-    Base.metadata.create_all(bind=engine)
-except Exception as e:
-    logging.getLogger("uvicorn").warning(f"Database connection error on startup: {e}. Check if Supabase project is active in dashboard.")
+initialize_database_schema(get_active_engine())
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -51,10 +50,12 @@ def root():
 
 @app.get("/health", tags=["System"])
 def health_check():
+    active_engine = get_active_engine()
     return {
         "status": "healthy",
         "service": settings.PROJECT_NAME,
-        "database": settings.DATABASE_URL.split(":")[0],
+        "database": "local_supabase" if is_using_offline_database() else active_engine.dialect.name,
+        "offline_database": is_using_offline_database(),
         "storage": settings.AUDIO_STORAGE_DIR
     }
 

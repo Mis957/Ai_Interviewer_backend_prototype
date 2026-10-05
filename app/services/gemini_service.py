@@ -19,6 +19,58 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+_QUESTION_FOCUSES = (
+    ("core_concept", "Test one core concept or mechanism with a clear, concrete example."),
+    ("debugging", "Present a realistic bug or unexpected behavior and ask how the candidate would investigate its cause."),
+    ("performance", "Present a realistic performance symptom and ask which specific bottleneck or measurement they would investigate first."),
+    ("concurrency_reliability", "Ask about one concurrency, failure-handling, or reliability scenario relevant to the technology."),
+    ("trade_off", "Ask the candidate to explain one concrete technical choice and the consequence that mattered most."),
+)
+
+_PYTHON_QUESTION_PROGRESSION = (
+    (
+        "foundation",
+        "Start with Python fundamentals such as built-in data types, mutability, function arguments, or scope. "
+        "Ask about one basic behavior in a simple example.",
+    ),
+    (
+        "object_oriented",
+        "Ask about a core object-oriented concept in Python, such as classes versus instances, inheritance, "
+        "or composition, using a simple practical example.",
+    ),
+    (
+        "common_language_feature",
+        "Ask about one commonly used Python feature, such as decorators, generators, iterators, or context managers, "
+        "and its practical purpose.",
+    ),
+    (
+        "practical_debugging",
+        "Present a realistic Python bug, exception, or test behavior and ask how the candidate would reason about it.",
+    ),
+    (
+        "advanced_internals",
+        "Ask about one advanced Python topic such as async execution, the GIL, memory behavior, or performance, "
+        "grounded in a concrete scenario.",
+    ),
+)
+
+
+def _question_focus(sequence: int) -> tuple[str, str]:
+    return _QUESTION_FOCUSES[sequence % len(_QUESTION_FOCUSES)]
+
+
+def _technology_progression(technology: str, sequence: int) -> tuple[str, str]:
+    normalized_technology = technology.casefold()
+    progression = _PYTHON_QUESTION_PROGRESSION if "python" in normalized_technology else (
+        ("foundation", f"Ask about a fundamental building block or basic usage of {technology}, grounded in a simple example."),
+        ("core_model", f"Ask about a core programming, data, or object model concept relevant to {technology}."),
+        ("common_feature", f"Ask about a commonly used feature or mechanism in {technology} and when it is useful."),
+        ("practical_debugging", f"Present a realistic bug or unexpected behavior involving {technology} and ask how to investigate it."),
+        ("advanced_application", f"Ask about one advanced mechanism, performance concern, or reliability scenario involving {technology}."),
+    )
+    return progression[min(max(sequence, 0), len(progression) - 1)]
+
+
 def _safe_float(val: Any, default: float = 7.0) -> float:
     try:
         return float(val)
@@ -398,7 +450,8 @@ Rules for next_difficulty:
         stage: Optional[str] = None,
         adaptive_mode: Optional[str] = None,
         previous_topic: Optional[str] = None,
-        previous_score: Optional[float] = None
+        previous_score: Optional[float] = None,
+        question_sequence: int = 0
     ) -> Dict[str, Any]:
         avoid_str = ", ".join(existing_topics) if existing_topics else "None"
         role_str = target_role or "Software Developer"
@@ -407,26 +460,29 @@ Rules for next_difficulty:
         stage_instruction = ""
         if stage in ("intro", "stage1_intro"):
             stage_instruction = (
-                f"STAGE 1 OPENING DIRECTIVE: You MUST ask the candidate to tell you about themselves and introduce their technical background. "
-                f"Greet the candidate and ask: 'Could you tell me about yourself and walk me through your technical background and experience with {technology}?' "
-                f"DO NOT ask about projects, specific code, or technical puzzles in this opening question. Strictly ask them to introduce themselves. Strictly 1-2 concise sentences."
+                f"STAGE 1 OPENING: Ask the candidate to introduce themselves and summarize their technical background, including their experience with {technology}. "
+                f"Use a warm, natural interviewer tone without a greeting or extra preamble. Do not ask about projects or technical puzzles."
             )
         elif stage in ("intro_followup", "stage1_intro_followup"):
             prev_top = previous_topic or technology
-            stage_instruction = f"STAGE 1 FOLLOW-UP: Ask a concise, natural follow-up regarding their work with '{prev_top}' and what motivated them toward this domain. Strictly 1-2 sentences."
+            stage_instruction = f"STAGE 1 FOLLOW-UP: Ask one natural follow-up grounded in their experience with '{prev_top}', focused on one specific detail or motivation."
         elif stage in ("project", "stage2_project_deepdive"):
-            vague_push = " Probe sharply for specific bottlenecks or performance profiling tools used." if (previous_score is not None and previous_score < 6.0) else ""
-            stage_instruction = f"STAGE 2 PROJECT ARCHITECTURE: Ask a targeted question about an architectural challenge, bottleneck, concurrency issue, or engineering trade-off in a real-world project built with {technology}.{vague_push} Strictly 1-2 concise sentences."
+            stage_instruction = (
+                f"STAGE 2 PROJECT EXPERIENCE: Ask about a concrete piece of work involving {technology}, such as a feature they implemented, "
+                "a bug they diagnosed, or a technical obstacle they overcame. Do not default to system architecture. "
+                "Choose one angle and ask what the candidate personally did."
+            )
         elif stage in ("technical_adaptive", "stage3_technical_fundamentals"):
             if adaptive_mode == "deep_dive" and previous_topic:
-                stage_instruction = f"STAGE 3 DEEP-DIVE: The candidate showed good understanding of '{previous_topic}'. Drill down into internal mechanics, memory/performance trade-offs, or an edge case of '{previous_topic}'. Strictly 1-2 concise sentences."
+                stage_instruction = f"STAGE 3 DEEP-DIVE: The candidate showed good understanding of '{previous_topic}'. Ask one focused follow-up about a specific internal mechanism, edge case, or performance trade-off related to it."
             elif adaptive_mode == "pivot" and previous_topic:
-                stage_instruction = f"STAGE 3 PIVOT: The candidate struggled on '{previous_topic}'. Pivot cleanly away to a foundational core concept in {technology} (e.g., if Python: functions, decorators, generators, or context managers). Strictly 1-2 concise sentences."
+                stage_instruction = f"STAGE 3 PIVOT: The candidate struggled on '{previous_topic}'. Switch to one foundational concept in {technology} and ask a clear, approachable question about it."
             else:
+                focus_name, focus_guidance = _question_focus(question_sequence)
                 stage_instruction = (
-                    f"STAGE 3 TECHNICAL FUNDAMENTALS: Ask an on-point, precise technical question testing core concepts, internal mechanisms, or language features in {technology} at a {difficulty} level. "
-                    f"For example, if {technology} is Python, ask about specific concepts like functions (first-class functions, args/kwargs, closures), decorators (wrapping, implementation, decorators with arguments), generators & iterators (yield, memory efficiency), the GIL and multithreading vs multiprocessing, context managers, asyncio/event loop, or OOP/dunder methods. "
-                    f"Pick ONE specific concept directly. Topics already discussed (DO NOT REPEAT): {avoid_str}. Strictly 1-2 concise sentences."
+                    f"STAGE 3 TECHNICAL {focus_name.upper()}: {focus_guidance} "
+                    f"Use {technology}, calibrate depth to {difficulty}, and ground it in one brief practical context. "
+                    f"Do not repeat these topics: {avoid_str}."
                 )
 
         prompt = f"""You are a senior technical interviewer conducting a live spoken voice interview for a {role_str} role ({yoe_str} experience).
@@ -434,25 +490,28 @@ Rules for next_difficulty:
 Interview Context:
 - Track: {technology}
 - Target Difficulty: {difficulty}
+- Candidate experience: {yoe_str}; calibrate depth to this level.
 - Stage Directive: {stage_instruction}
 - Topics Already Discussed (DO NOT REPEAT): {avoid_str}
 
 CRITICAL RULES FOR GENERATING THE QUESTION:
-1. NATURAL SPOKEN VOICE: The question will be read aloud to the candidate via Text-to-Speech. Phrase it conversationally as a real interviewer speaking directly to the candidate using "you" (e.g., "Could you tell me about yourself...", "In your project, how did you handle...", "How do decorators work in Python...").
-2. ON POINT, PRECISE & CONCISE: The question must be strictly 1 to 2 clear sentences maximum. No rambling, no introductory fluff ("Here is your next question:", "Great, moving on to..."), and no combined multiple questions.
-3. CONVERSATIONAL TECHNICAL DISCUSSION: NEVER ask written exam problems or coding puzzle instructions (e.g. NEVER say "Write a function...", "Write a script...", or "Given an array..."). Ask conceptual, architectural, or mechanism-based questions that the candidate can explain verbally.
-4. SINGLE FOCUSED TOPIC: Probe one clear concept or scenario.
-5. NO TOOL CALLS: NEVER output function calls or tool calls. Do NOT output a JSON with 'name' or 'parameters'. Output strictly the JSON schema requested below.
+1. SOUND LIKE A REAL INTERVIEWER: Address the candidate directly in natural spoken English. Use a brief, relevant setup so the candidate knows what situation or concept you mean; avoid generic prompts that could apply to anything.
+2. BE SPECIFIC BUT TO THE POINT: Ask about one clearly named concept, decision, or scenario. Include only enough context to make the question meaningful, then ask one direct question. Keep it to 1-2 short sentences and end with a question mark.
+3. ASK ONE THING: Ask one clear question, not a checklist. Avoid stacking asks with "and"; do not request several examples, comparisons, or solutions at once.
+4. KEEP IT SPOKEN: Avoid written exam problems and coding-puzzle instructions such as "Write a function" or "Given an array." Ask something the candidate can answer aloud.
+5. AVOID FILLER: Do not add greetings, transitions, praise, or phrases like "Here is your next question" or "Great, moving on."
+6. VARY THE INTERVIEW: Follow the stage's requested angle. Do not turn every question into architecture or system design. Prefer concrete engineering work, language/framework behavior, debugging, performance, reliability, and trade-offs where relevant.
+7. NO TOOL CALLS: NEVER output function calls or tool calls. Do NOT output a JSON with 'name' or 'parameters'. Output strictly the JSON schema requested below.
 
 Return STRICTLY in JSON format with NO markdown wrapping:
 {{
   "topic": "<Specific Topic Name>",
-  "question": "<Clean, direct, conversational spoken question (1-2 sentences)>",
+  "question": "<Specific, natural spoken interview question with brief context and one focused ask (1-2 short sentences)>",
   "expected_answer": "<Concise summary of key concepts/points expected in candidate's verbal response>",
   "keywords": ["<keyword1>", "<keyword2>"]
 }}
 """
-        system_prompt = "You are a professional, senior technical interviewer conducting a live voice interview. You ask clean, concise, verbal questions that sound natural when spoken aloud. Never output tool calls. Always output valid JSON strictly matching the requested schema."
+        system_prompt = "You are a thoughtful senior technical interviewer. Ask specific, natural spoken questions with enough context to be clear and only one focused ask. Keep them concise, avoid filler, and always output valid JSON strictly matching the requested schema."
         raw_output = self._call_llm_for_task("question_gen", prompt, system_prompt=system_prompt)
         if raw_output:
             try:
@@ -530,7 +589,9 @@ Return STRICTLY in JSON format with NO markdown wrapping:
         existing_topics: Optional[List[str]] = None,
         target_project: Optional[Dict[str, Any]] = None,
         project_aspect: Optional[str] = None,
-        target_technology: Optional[str] = None
+        target_technology: Optional[str] = None,
+        last_score: Optional[float] = None,
+        question_sequence: int = 0
     ) -> Dict[str, Any]:
         """
         Generates interview question specifically tailored to candidate's uploaded resume (3-Stage Flow):
@@ -545,15 +606,32 @@ Return STRICTLY in JSON format with NO markdown wrapping:
         proj_str = json.dumps(projects)
         hr_topics_str = ", ".join(resume_data.get("hr_topics", ["Teamwork", "Problem Solving"]))
 
+        if last_score is None:
+            score_guidance = "This is the first question; establish a clear baseline at the requested difficulty."
+        elif last_score < 5.0:
+            score_guidance = (
+                f"The previous answer scored {last_score:.1f}/10. Make the next question easier and more foundational; "
+                "if appropriate, clarify the same broad area without repeating the exact question."
+            )
+        elif last_score >= 8.0:
+            score_guidance = (
+                f"The previous answer scored {last_score:.1f}/10. Increase the challenge and ask a deeper follow-up "
+                "or test a more advanced aspect of the next topic."
+            )
+        else:
+            score_guidance = (
+                f"The previous answer scored {last_score:.1f}/10. Keep the next question at a moderate level and "
+                "build on the candidate's demonstrated knowledge."
+            )
+
         category_instructions = ""
         if category == "intro":
             category_instructions = (
-                f"STAGE 1 OPENING DIRECTIVE: You MUST ask the candidate to tell you about themselves and introduce their technical background. "
-                f"Greet candidate '{candidate_name}' warmly and ask: 'Could you tell me about yourself and walk me through your technical background and recent work?' "
-                f"DO NOT ask technical exam questions or deep project questions here. Strictly ask them to introduce themselves. Strictly 1-2 concise sentences."
+                "STAGE 1 OPENING: Invite the candidate to introduce themselves and summarize their technical background, "
+                "including experience relevant to the role. Do not ask about projects or technical puzzles."
             )
         elif category == "intro_followup":
-            category_instructions = f"STAGE 1 FOLLOW-UP: Follow up naturally on candidate '{candidate_name}'s background with {skills_str} and ask what motivated them to specialize in this field. Strictly 1-2 sentences."
+            category_instructions = f"STAGE 1 FOLLOW-UP: Ask one natural follow-up about the candidate's experience with {skills_str}, focusing on what motivated their interest in this area."
         elif category == "project":
             if target_project:
                 pname = target_project.get("name", "Project")
@@ -561,46 +639,42 @@ Return STRICTLY in JSON format with NO markdown wrapping:
                 pdesc = target_project.get("description", "")
                 if project_aspect == "overview":
                     category_instructions = (
-                        f"STAGE 2 PROJECT ARCHITECTURE DIRECTIVE: Focus specifically on the candidate's project '{pname}' (Tech Stack: {ptech}. Description: {pdesc}). "
-                        f"Ask an on-point, precise question about the high-level architecture of '{pname}', their specific role, and how they structured the system. "
-                        f"Strictly 1 to 2 concise sentences."
+                        f"STAGE 2 PROJECT EXPERIENCE: Use the candidate's project '{pname}' (Tech Stack: {ptech}. Description: {pdesc}) as context. "
+                        f"Ask about one concrete feature or technical contribution they made. Avoid defaulting to architecture."
                     )
                 elif project_aspect == "hurdle_or_bottleneck":
                     category_instructions = (
-                        f"STAGE 2 PROJECT TECHNICAL CHALLENGE DIRECTIVE: Focus specifically on the candidate's project '{pname}' (Tech Stack: {ptech}). "
-                        f"Ask an on-point, precise question about the most difficult technical hurdle, performance bottleneck, concurrency issue, or complex bug they tackled while building '{pname}' and how they resolved it. "
-                        f"Strictly 1 to 2 concise sentences."
+                        f"STAGE 2 PROJECT CHALLENGE: Focus on the candidate's project '{pname}' (Tech Stack: {ptech}. Description: {pdesc}). "
+                        f"Ask about one specific bug, failure, or technical obstacle they encountered and how they investigated it."
                     )
                 elif project_aspect == "tradeoffs_or_scaling":
                     category_instructions = (
-                        f"STAGE 2 PROJECT TRADE-OFFS & SCALING DIRECTIVE: Focus specifically on the candidate's project '{pname}' (Tech Stack: {ptech}). "
-                        f"Ask an on-point, precise question about the engineering trade-offs they made (e.g., choice of {ptech}, data storage/schema design) or how they would architect the system to scale under heavy traffic. "
-                        f"Strictly 1 to 2 concise sentences."
+                        f"STAGE 2 PROJECT IMPACT: Focus on the candidate's project '{pname}' (Tech Stack: {ptech}. Description: {pdesc}). "
+                        f"Ask about one technical decision or improvement and its observable impact. Do not add a separate scaling question."
                     )
                 else:
                     category_instructions = (
-                        f"STAGE 2 PROJECT DEEP-DIVE DIRECTIVE: Focus specifically on the candidate's project '{pname}' (Tech Stack: {ptech}). "
-                        f"Ask a direct, precise question exploring the architectural decisions, trade-offs, or implementation challenges of '{pname}'. "
-                        f"Strictly 1 to 2 concise sentences."
+                        f"STAGE 2 PROJECT DEEP-DIVE: Focus on the candidate's project '{pname}' (Tech Stack: {ptech}). "
+                        f"Ask about one specific design decision or implementation challenge in this project."
                     )
             elif projects:
                 category_instructions = (
-                    f"STAGE 2 PROJECT DIRECTIVE: Inquire about the candidate's projects ({proj_str}). Ask a sharp, focused question on architectural decisions, trade-offs, or technical hurdles. Strictly 1-2 concise sentences."
+                    f"STAGE 2 PROJECT: Use the candidate's projects ({proj_str}) as context. Ask about one specific implementation contribution or technical challenge, not broad architecture."
                 )
             else:
-                category_instructions = "STAGE 2 PROJECT DIRECTIVE: Ask about a significant engineering project they built, focusing on architectural decisions and trade-offs. Strictly 1-2 concise sentences."
+                category_instructions = "STAGE 2 PROJECT: Ask about one specific feature they built or technical challenge they handled in an engineering project."
+            category_instructions += f" Adapt the depth to the latest answer score: {score_guidance}"
         elif category in ("technology", "skill"):
             target_tech = target_technology or resume_data.get("primary_technology") or (skills_str.split(",")[0].strip() if skills_str else "Python")
+            progression_stage, progression_guidance = (
+                _technology_progression(target_tech, question_sequence)
+            )
             category_instructions = (
-                f"STAGE 3 TECHNOLOGY & CORE CONCEPTS DIRECTIVE: The candidate has '{target_tech}' listed in their skills. "
-                f"Ask an on-point, precise, concise technical question testing their understanding of a specific core concept, mechanism, or internal in {target_tech} at a {difficulty} level. "
-                f"IMPORTANT: Ask about concrete mechanisms or language features. For example: "
-                f"- If {target_tech} is Python: ask about specific concepts like functions (first-class functions, args/kwargs, closures), decorators (function wrapping, custom decorators with arguments), generators & iterators (yield, memory management), the Global Interpreter Lock (GIL) and multithreading vs multiprocessing, context managers (__enter__/__exit__), asyncio/event loop, or object-oriented features (dunder methods, MRO). "
-                f"- If {target_tech} is SQL/DBMS: ask about indexing (B-Tree, clustered vs non-clustered), ACID transactions & isolation levels, query execution plans, or normalization. "
-                f"- If {target_tech} is another framework or tool: ask about its core mechanisms, lifecycle, concurrency, or performance trade-offs. "
-                f"DO NOT ask broad or vague questions. Focus on ONE specific mechanism. "
-                f"DO NOT repeat any topic already discussed: {avoid_str}. "
-                f"Strictly 1 to 2 sentences. No coding on paper."
+                f"STAGE 3 TECH-STACK QUESTION - {progression_stage.upper()}: "
+                f"The candidate lists '{target_tech}' as a skill. {progression_guidance} "
+                f"This is question {question_sequence + 1} for this technology. "
+                f"Choose one specific concept or realistic situation and do not repeat these topics: {avoid_str}. "
+                f"Do not assume expertise beyond the listed skill. Score adaptation: {score_guidance}"
             )
         elif category == "hr_behavioral":
             category_instructions = "BEHAVIORAL: Ask a concise behavioral question about handling critical blockers, team conflicts, or tight deadlines under pressure. Strictly 1-2 sentences."
@@ -614,26 +688,30 @@ Candidate Profile:
 - Projects: {proj_str}
 - Category: {category}
 - Difficulty: {difficulty}
+- Latest answer score: {f"{last_score:.1f}/10" if last_score is not None else "No previous answer"}
+- Use the latest score to choose the next question's depth: {score_guidance}
 - Stage Directive: {category_instructions}
 - Topics Already Discussed (DO NOT REPEAT): {avoid_str}
 
 CRITICAL RULES FOR GENERATING THE QUESTION:
-1. SPOKEN INTERVIEWER TONE: Speak directly to candidate '{candidate_name}' using "you" (e.g. "Could you tell me about yourself...", "In your project '{target_project.get('name', 'project') if target_project else 'project'}', how did you...", "How do decorators work in Python..."). Phrase the question naturally for text-to-speech voice delivery.
-2. ON POINT, PRECISE & CONCISE: The question must be strictly 1 to 2 clear sentences. NO introductory fluff or conversational filler (e.g., NEVER say "Hello Oliver", "Great to meet you, today we will...", "Moving on to...", or "As we know..."). Get straight to the question.
-3. CONVERSATIONAL VERBAL TECHNICAL DISCUSSION: Inquire about mechanisms, concepts, design decisions, and how things work under the hood. NEVER ask the candidate to write code or solve coding puzzles (NEVER say "Write a function...", "Write a script...", or "Given an array...").
-4. ACCURATE TO STAGE DIRECTIVE: Strictly follow the stage directive above.
-5. NO TOOL CALLS: Output strictly the JSON schema requested below with NO markdown formatting or commentary.
+1. SPOKEN INTERVIEWER TONE: Speak directly to the candidate in natural conversational English suitable for text-to-speech. Avoid canned openings and over-formal phrasing.
+2. SPECIFIC WITH CONTEXT: Ground the question in the named project, technology, or a plausible scenario. Ask about one concrete concept, decision, or challenge, not broad architecture by default.
+3. ONE FOCUSED ASK: Ask one direct question, not a checklist or multiple requests joined with "and". Keep it to 1-2 short sentences and end with a question mark.
+4. CONVERSATIONAL TECHNICAL DISCUSSION: Ask about concepts, mechanisms, design decisions, debugging, or experience that can be explained verbally. Never ask the candidate to write code or solve a coding puzzle.
+5. ACCURATE TO STAGE DIRECTIVE: Follow the stage directive and do not invent candidate or project details that are absent from the resume.
+6. VARY THE INTERVIEW: Across questions, vary between implementation, technical fundamentals, debugging, performance, reliability, and trade-offs instead of repeatedly asking architecture questions.
+7. NO FILLER OR TOOL CALLS: Do not add greetings, transitions, praise, markdown, commentary, or tool calls. Output only the requested JSON.
 
 Return STRICTLY in JSON format:
 {{
   "topic": "<Specific Topic or Concept Name>",
   "category": "{category}",
-  "question": "<On point, precise, concise spoken question (strictly 1-2 sentences)>",
+  "question": "<Specific natural spoken interview question with brief context and one focused ask (1-2 short sentences)>",
   "expected_answer": "<Concise summary of key technical points expected in candidate's verbal response>",
   "keywords": ["<keyword1>", "<keyword2>"]
 }}
 """
-        system_prompt = "You are an experienced technical interviewer conducting a live verbal resume interview. You ask clean, direct, spoken questions that are on point, precise, and concise. Never output tool calls. Always output valid JSON strictly matching the requested schema."
+        system_prompt = "You are a thoughtful experienced interviewer conducting a live verbal resume interview. Ask specific, natural questions grounded in the candidate's resume, with enough context to be clear and only one focused ask. Keep them concise and always output valid JSON strictly matching the requested schema."
         raw_output = self._call_llm_for_task("question_gen", prompt, system_prompt=system_prompt)
         if raw_output:
             try:
@@ -675,35 +753,51 @@ Return STRICTLY in JSON format:
             ptech = ", ".join(proj.get("tech_stack", ["Python"])) or "the tech stack"
             if project_aspect == "overview":
                 return {
-                    "topic": f"Project Architecture: {pname}",
+                    "topic": f"Project Contribution: {pname}",
                     "category": "project",
-                    "question": f"In your project '{pname}', could you walk me through the high-level architecture and your primary technical responsibilities?",
-                    "expected_answer": f"Clear overview of {pname} system architecture, core components, and candidate's technical contributions.",
-                    "keywords": [pname, "architecture", "responsibilities"]
+                    "question": (
+                        f"What is one feature you implemented for '{pname}'?"
+                        if last_score is not None and last_score < 5.0
+                        else (
+                            f"What technical consideration most influenced how you implemented a feature in '{pname}'?"
+                            if last_score is not None and last_score >= 8.0
+                            else f"In '{pname}', what was one implementation decision you made, and what led you to it?"
+                        )
+                    ),
+                    "expected_answer": f"A specific contribution to {pname} and an explanation appropriate to the candidate's demonstrated level.",
+                    "keywords": [pname, "implementation", "contribution"]
                 }
             elif project_aspect == "hurdle_or_bottleneck":
                 return {
                     "topic": f"Technical Challenge: {pname}",
                     "category": "project",
-                    "question": f"What was the most challenging technical hurdle or performance bottleneck you encountered while building '{pname}', and how did you resolve it?",
-                    "expected_answer": f"Detailed description of technical hurdle in {pname} and engineering solution implemented.",
-                    "keywords": [pname, "bottleneck", "problem-solving"]
+                    "question": (
+                        f"What was one technical issue you encountered while building '{pname}'?"
+                        if last_score is not None and last_score < 5.0
+                        else f"When you encountered a technical issue in '{pname}', what evidence helped you identify its cause?"
+                    ),
+                    "expected_answer": f"A relevant technical challenge in {pname} explained at a level appropriate to the candidate's demonstrated knowledge.",
+                    "keywords": [pname, "technical-challenge", "problem-solving"]
                 }
             elif project_aspect == "tradeoffs_or_scaling":
                 return {
-                    "topic": f"Trade-offs & Scalability: {pname}",
+                    "topic": f"Project Technical Decision: {pname}",
                     "category": "project",
-                    "question": f"What key architectural trade-offs did you make when choosing {ptech} for '{pname}', and how would you scale the system to handle 10x the load?",
-                    "expected_answer": f"Explanation of trade-offs, technology choices, and scaling strategies for {pname}.",
-                    "keywords": [pname, "trade-offs", "scalability"]
+                    "question": (
+                        f"What was one technical choice you made for '{pname}'?"
+                        if last_score is not None and last_score < 5.0
+                        else f"What was one technical choice you made for '{pname}', and what impact did it have?"
+                    ),
+                    "expected_answer": f"A concrete technical choice for {pname} and its impact, if appropriate to the candidate's demonstrated level.",
+                    "keywords": [pname, ptech, "technical-decision"]
                 }
             else:
                 return {
                     "topic": f"Project: {pname}",
                     "category": "project",
-                    "question": f"In your project '{pname}', what architectural decisions did you make with {ptech} and what trade-offs did you consider?",
-                    "expected_answer": f"Clear explanation of architecture and trade-offs in {pname}.",
-                    "keywords": [pname, "architecture", "trade-offs"]
+                    "question": f"What is one technical contribution you made to '{pname}'?",
+                    "expected_answer": f"A specific technical contribution to {pname}.",
+                    "keywords": [pname, "technical-contribution"]
                 }
         elif category == "hr_behavioral":
             return {
@@ -721,14 +815,20 @@ Return STRICTLY in JSON format:
 
             if "python" in t_low:
                 python_bank = [
-                    ("Decorators in Python", "How do decorators work under the hood in Python, and how would you implement a custom decorator that accepts arguments?"),
-                    ("Functions & Argument Passing", "Could you explain how argument passing works in Python functions, specifically regarding mutable versus immutable default arguments?"),
-                    ("Generators & Yield", "What is the difference between a generator and a standard function in Python, and how does the yield keyword optimize memory usage?"),
-                    ("GIL & Concurrency", "How does the Global Interpreter Lock (GIL) impact multithreading in Python, and when would you choose multiprocessing instead?"),
-                    ("Context Managers", "How do context managers work in Python using the 'with' statement, and what methods are required to implement one from scratch?"),
-                    ("OOP & Dunder Methods", "What is the difference between '__new__' and '__init__' in Python, and when would you override '__new__'?")
+                    ("Python Fundamentals", "In Python, how would you explain the difference between a list and a tuple to a teammate?"),
+                    ("Object-Oriented Programming", "In Python, what is the difference between a class and an instance?"),
+                    ("Decorators in Python", "In Python, what does a decorator do to a function, and when might you use one?"),
+                    ("Generators & Yield", "How does the yield keyword let a Python function produce values lazily?"),
+                    ("GIL & Concurrency", "When might the Global Interpreter Lock affect a CPU-bound Python application?"),
+                    ("Context Managers", "What problem does a context manager solve when working with files in Python?"),
+                    ("Python Memory Management", "How does Python reclaim memory when objects are no longer in use?")
                 ]
-                for topic_name, q_text in python_bank:
+                if last_score is not None and last_score < 5.0:
+                    bank_start = 0
+                else:
+                    bank_start = min(question_sequence, len(python_bank) - 1)
+                ordered_bank = python_bank[bank_start:] + python_bank[:bank_start]
+                for topic_name, q_text in ordered_bank:
                     if topic_name.lower() not in existing_str and q_text[:30].lower() not in existing_str:
                         return {
                             "topic": topic_name,
@@ -744,12 +844,16 @@ Return STRICTLY in JSON format:
                     "expected_answer": "Explanation of reference counting, garbage collection thresholds, and cyclic references in Python.",
                     "keywords": ["Python", "memory", "garbage-collection"]
                 }
-            elif "sql" in t_low or "dbms" in t_low or "database" in t_low:
+            elif any(
+                database_term in t_low
+                for database_term in ("sql", "dbms", "database", "postgres", "mysql", "sqlite", "mariadb")
+            ):
                 sql_bank = [
-                    ("Database Indexing", "What is the difference between a clustered and non-clustered index in SQL, and when might an index hurt query performance?"),
-                    ("ACID & Isolation Levels", "Could you explain the four ACID properties in relational databases, focusing on how isolation levels prevent dirty reads?"),
-                    ("Query Optimization & Joins", "How do database query engines optimize INNER JOIN versus LEFT JOIN, and what role does an execution plan play?"),
-                    ("Transactions & Concurrency", "What is the difference between optimistic and pessimistic locking in database transaction management?")
+                    ("SQL Fundamentals", "How would you use a WHERE clause to filter rows in a SQL query?"),
+                    ("SQL Joins", "When would you use a LEFT JOIN instead of an INNER JOIN?"),
+                    ("Database Indexing", "How does an index help a SQL query that filters a large table?"),
+                    ("Transactions", "What problem do transactions solve when an operation updates several related rows?"),
+                    ("Transaction Isolation", "How can transaction isolation prevent a query from reading another transaction's incomplete changes?")
                 ]
                 for topic_name, q_text in sql_bank:
                     if topic_name.lower() not in existing_str:
@@ -760,13 +864,22 @@ Return STRICTLY in JSON format:
                             "expected_answer": f"Technical breakdown of {topic_name}.",
                             "keywords": [target_tech, topic_name.lower()]
                         }
-            # Fallback for any other technology
+            progression_stage, progression_difficulty, _ = _technology_progression(
+                target_tech, question_sequence
+            )
+            fallback_questions = (
+                f"What problem does {target_tech} solve in an application?",
+                f"What is one important building block of {target_tech}, and what does it do?",
+                f"How would you use a common {target_tech} feature in a typical task?",
+                f"If something behaved unexpectedly in {target_tech}, what would you check first?",
+                f"What advanced behavior or limitation of {target_tech} matters in a high-load application?",
+            )
             return {
-                "topic": f"{target_tech} Core Concepts",
+                "topic": f"{target_tech} {progression_stage.replace('_', ' ').title()}",
                 "category": "technology",
-                "question": f"How do you manage error handling, concurrency, and performance optimization when developing applications with {target_tech}?",
-                "expected_answer": f"Best practices for concurrency, error handling, and performance in {target_tech}.",
-                "keywords": [target_tech, "performance", "best-practices"]
+                "question": fallback_questions[min(max(question_sequence, 0), len(fallback_questions) - 1)],
+                "expected_answer": f"A clear {progression_difficulty.lower()}-level explanation relevant to {target_tech}.",
+                "keywords": [target_tech, progression_stage]
             }
 
     def generate_final_report(

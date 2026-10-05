@@ -6,6 +6,7 @@ pydantic-settings>=2.2.1
 google-genai>=0.1.1
 google-generativeai>=0.4.1
 edge-tts>=6.1.9
+pyttsx3>=2.90
 python-multipart>=0.0.9
 psycopg2-binary>=2.9.9
 asyncpg>=0.29.0
@@ -17,4 +18,3 @@ openai-whisper>=20231117
 #python -m uvicorn app.main:app --reload --port 8000
 #cd frontend
 #npm run dev
-
