@@ -1,4 +1,6 @@
 import logging
+import time
+from datetime import datetime, timezone
 from threading import Lock
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
@@ -27,6 +29,12 @@ _offline_engine = (
 _active_engine = _primary_engine
 _using_offline_database = False
 _engine_lock = Lock()
+_last_sync_attempt = 0.0
+_last_sync_succeeded_at = None
+_last_sync_error = None
+_last_primary_attempt = 0.0
+_last_primary_error = None
+_sync_retry_interval_seconds = 30
 
 # Retained for scripts that need the configured primary engine directly.
 engine = _primary_engine
@@ -40,21 +48,43 @@ def _check_connection(eng):
         conn.execute(text("SELECT 1"))
 
 
-def get_active_engine():
-    """Use the hosted database until it fails, then pin this process to local Supabase."""
-    global _active_engine, _using_offline_database
+def _safe_database_error(error):
+    message = str(getattr(error, "orig", error))
+    primary_url = getattr(_primary_engine, "url", None)
+    for secret in (
+        getattr(primary_url, "password", None),
+        getattr(primary_url, "username", None),
+    ):
+        if secret:
+            message = message.replace(secret, "<redacted>")
+    primary_host = getattr(primary_url, "host", None)
+    if primary_host:
+        message = message.replace(primary_host, "<db-host>")
+    return message
 
-    if _using_offline_database or _primary_engine.dialect.name == "sqlite":
+
+def get_active_engine():
+    """Use local Supabase during outages and sync it when the hosted DB returns."""
+    global _active_engine, _using_offline_database
+    global _last_sync_attempt, _last_sync_succeeded_at, _last_sync_error
+    global _last_primary_attempt, _last_primary_error
+
+    if _primary_engine.dialect.name == "sqlite":
         return _active_engine
 
-    try:
-        _check_connection(_primary_engine)
-        return _primary_engine
-    except SQLAlchemyError as primary_error:
-        with _engine_lock:
-            if _using_offline_database:
-                return _active_engine
+    with _engine_lock:
+        now = time.monotonic()
+        if (
+            _last_primary_attempt > 0.0
+            and now - _last_primary_attempt < _sync_retry_interval_seconds
+        ):
+            return _active_engine
 
+        _last_primary_attempt = now
+        try:
+            _check_connection(_primary_engine)
+        except SQLAlchemyError as primary_error:
+            _last_primary_error = _safe_database_error(primary_error)
             if _offline_engine is None:
                 raise RuntimeError(
                     "The primary database is unavailable and OFFLINE_DATABASE_URL "
@@ -69,18 +99,131 @@ def get_active_engine():
                     "not be reached. Start the local Supabase stack and try again."
                 ) from offline_error
 
-            initialize_database_schema(_offline_engine)
-            _active_engine = _offline_engine
-            _using_offline_database = True
-            logger.warning(
-                "Primary database is unavailable; using local Supabase for this "
-                "process. Local changes will not be synchronized automatically."
+            if not _using_offline_database:
+                initialize_database_schema(_offline_engine)
+                _active_engine = _offline_engine
+                _using_offline_database = True
+                logger.warning(
+                    "Primary database is unavailable; using local Supabase. "
+                    "Hosted connection error: %s. Local changes will sync when "
+                    "the primary database returns.",
+                    _last_primary_error,
+                )
+            return _offline_engine
+
+        _last_primary_error = None
+        _active_engine = _primary_engine
+        _using_offline_database = False
+
+        if (
+            _offline_engine is not None
+            and (
+                _last_sync_attempt == 0.0
+                or now - _last_sync_attempt >= _sync_retry_interval_seconds
             )
-            return _active_engine
+        ):
+            _last_sync_attempt = now
+            try:
+                _sync_local_data_to_primary(_offline_engine, _primary_engine)
+            except (SQLAlchemyError, RuntimeError) as sync_error:
+                _last_sync_error = _safe_database_error(sync_error)
+                logger.exception(
+                    "Could not sync local Supabase data to the hosted database; "
+                    "the local data is retained and synchronization will retry. "
+                    "New database requests will use the hosted database."
+                )
+            else:
+                _last_sync_error = None
+                _last_sync_succeeded_at = datetime.now(timezone.utc).isoformat()
+                logger.info(
+                    "Local Supabase data synchronization to the hosted database "
+                    "completed; local records were retained."
+                )
+
+        return _primary_engine
+
+
+def _sync_local_data_to_primary(local_engine, primary_engine):
+    """Idempotently upsert local rows to the hosted database without deleting local rows."""
+    from sqlalchemy.dialects.postgresql import insert as postgres_insert
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+    initialize_database_schema(local_engine)
+    initialize_database_schema(primary_engine)
+    dialect = primary_engine.dialect.name
+    if dialect == "postgresql":
+        insert_for_dialect = postgres_insert
+    elif dialect == "sqlite":
+        insert_for_dialect = sqlite_insert
+    else:
+        raise RuntimeError(
+            f"Offline synchronization does not support the {dialect} database dialect."
+        )
+
+    with local_engine.connect() as source, primary_engine.begin() as destination:
+        for table in Base.metadata.sorted_tables:
+            rows = [
+                dict(row._mapping)
+                for row in source.execute(table.select()).fetchall()
+            ]
+            if not rows:
+                continue
+
+            primary_keys = list(table.primary_key.columns)
+            if not primary_keys:
+                raise RuntimeError(
+                    f"Cannot synchronize {table.name}: it has no primary key."
+                )
+            update_columns = {
+                column.name: getattr(insert_for_dialect(table).excluded, column.name)
+                for column in table.columns
+                if not column.primary_key
+            }
+
+            for offset in range(0, len(rows), 250):
+                statement = insert_for_dialect(table).values(rows[offset:offset + 250])
+                if update_columns:
+                    statement = statement.on_conflict_do_update(
+                        index_elements=primary_keys,
+                        set_=update_columns,
+                    )
+                else:
+                    statement = statement.on_conflict_do_nothing(
+                        index_elements=primary_keys,
+                    )
+                destination.execute(statement)
 
 
 def is_using_offline_database():
     return _using_offline_database
+
+
+def get_offline_sync_status():
+    if _offline_engine is None:
+        return {"status": "not_configured", "last_synced_at": None, "error": None}
+    if _last_sync_error:
+        return {
+            "status": "pending",
+            "last_synced_at": _last_sync_succeeded_at,
+            "error": _last_sync_error,
+        }
+    if _using_offline_database:
+        return {
+            "status": "waiting_for_connection",
+            "last_synced_at": _last_sync_succeeded_at,
+            "error": _last_primary_error,
+        }
+    if _last_primary_error:
+        return {
+            "status": "waiting_for_connection",
+            "last_synced_at": _last_sync_succeeded_at,
+            "error": _last_primary_error,
+        }
+    return {
+        "status": "synced" if _last_sync_succeeded_at else "not_attempted",
+        "last_synced_at": _last_sync_succeeded_at,
+        "error": None,
+    }
 
 
 def create_db_session():

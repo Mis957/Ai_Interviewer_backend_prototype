@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from app.services.gemini_service import GeminiService
 from app.services.selection_service import QuestionSelectionService
@@ -205,3 +206,145 @@ def test_low_score_fallback_returns_to_foundational_python_topic():
     )
 
     assert question["topic"] == "Python Fundamentals"
+
+
+def test_manual_project_prompt_keeps_question_scoped_to_selected_track():
+    service = GeminiService.__new__(GeminiService)
+    prompts = []
+
+    def capture_prompt(task_type, prompt, system_prompt=None):
+        prompts.append(prompt)
+        return (
+            '{"topic":"RAG project experience",'
+            '"question":"If you have used RAG in a project, what was one technical decision you made?",'
+            '"expected_answer":"A focused explanation of one decision.",'
+            '"keywords":["RAG"]}'
+        )
+
+    service._call_llm_for_task = capture_prompt
+
+    result = service.generate_dynamic_question(
+        technology="RAG",
+        difficulty="Easy",
+        stage="project",
+    )
+
+    assert "Track: RAG" in prompts[0]
+    assert "no project details" in prompts[0]
+    assert "do not combine it with an unrelated scenario" in prompts[0]
+    assert "API traffic-light monitoring" in prompts[0]
+    assert "what was one technical decision" in result["question"]
+
+
+def test_manual_project_fallback_asks_one_track_grounded_question():
+    service = GeminiService.__new__(GeminiService)
+    service._call_llm_for_task = lambda *args, **kwargs: ""
+
+    result = service.generate_dynamic_question(
+        technology="RAG",
+        difficulty="Easy",
+        stage="project",
+    )
+
+    assert result["question"] == (
+        "If you have used RAG in a project, what was one technical decision you made about it?"
+    )
+    assert "API" not in result["question"]
+
+
+def test_same_resume_gets_different_question_focus_across_sessions():
+    service = GeminiService.__new__(GeminiService)
+    prompts = []
+
+    def capture_prompt(task_type, prompt, system_prompt=None):
+        prompts.append(prompt)
+        return (
+            '{"topic":"Python","question":"What is one Python concept you use?",'
+            '"expected_answer":"A relevant explanation.","keywords":["Python"]}'
+        )
+
+    service._call_llm_for_task = capture_prompt
+    resume = {"candidate_name": "Candidate", "skills": ["Python"], "projects": []}
+
+    with patch(
+        "app.services.gemini_service.secrets.choice",
+        side_effect=[
+            "a basic data type or value behavior",
+            "use a brief, concrete example and ask the candidate to explain the underlying behavior",
+            "function arguments, defaults, or scope",
+            "describe a realistic symptom and ask what mechanism could cause it",
+        ],
+    ):
+        for _ in range(2):
+            service.generate_resume_question(
+                resume_data=resume,
+                category="technology",
+                difficulty="Easy",
+                target_technology="Python",
+                question_sequence=0,
+            )
+
+    assert "focusing specifically on a basic data type or value behavior" in prompts[0]
+    assert "focusing specifically on function arguments, defaults, or scope" in prompts[1]
+    assert "use a brief, concrete example" in prompts[0]
+    assert "describe a realistic symptom" in prompts[1]
+
+
+def test_offline_project_fallback_varies_question_for_same_resume():
+    service = GeminiService.__new__(GeminiService)
+    service._call_llm_for_task = lambda *args, **kwargs: ""
+    resume = {
+        "candidate_name": "Candidate",
+        "skills": ["Python"],
+        "projects": [{"name": "Inventory API", "tech_stack": ["Python"]}],
+    }
+    question_choices = [
+        "one feature's user-facing behavior",
+        "begin with the user or system outcome, then ask about the candidate's specific contribution",
+        "What is one feature you implemented for 'Inventory API'?",
+        "how information moves through one part of the project",
+        "start with one component's data flow and ask about the candidate's implementation choice",
+        "How did one part of 'Inventory API' use its listed technology stack?",
+    ]
+
+    with patch("app.services.gemini_service.secrets.choice", side_effect=question_choices):
+        results = [
+            service.generate_resume_question(
+                resume_data=resume,
+                category="project",
+                difficulty="Easy",
+                target_project=resume["projects"][0],
+                project_aspect="overview",
+            )
+            for _ in range(2)
+        ]
+
+    assert results[0]["question"] != results[1]["question"]
+
+
+def test_offline_fallback_varies_questions_for_other_resume_technologies():
+    service = GeminiService.__new__(GeminiService)
+    service._call_llm_for_task = lambda *args, **kwargs: ""
+    resume = {"candidate_name": "Candidate", "skills": ["RAG"], "projects": []}
+    choices = [
+        "a core RAG concept",
+        "use a brief, concrete example and ask the candidate to explain the underlying behavior",
+        "What problem does RAG solve in an application?",
+        "debugging a realistic RAG issue",
+        "describe a realistic symptom and ask what mechanism could cause it",
+        "Where would you choose RAG over a simpler alternative?",
+    ]
+
+    with patch("app.services.gemini_service.secrets.choice", side_effect=choices):
+        results = [
+            service.generate_resume_question(
+                resume_data=resume,
+                category="technology",
+                difficulty="Easy",
+                target_technology="RAG",
+                question_sequence=0,
+            )
+            for _ in range(2)
+        ]
+
+    assert results[0]["question"] != results[1]["question"]

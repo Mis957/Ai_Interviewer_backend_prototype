@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import secrets
 import time
 import requests
 from typing import Dict, Any, List, Optional
@@ -69,6 +70,17 @@ def _technology_progression(technology: str, sequence: int) -> tuple[str, str]:
         ("advanced_application", f"Ask about one advanced mechanism, performance concern, or reliability scenario involving {technology}."),
     )
     return progression[min(max(sequence, 0), len(progression) - 1)]
+
+
+def _choose_unused_question(
+    questions: List[str], existing_topics: Optional[List[str]]
+) -> str:
+    existing_text = " ".join(existing_topics or []).casefold()
+    unused_questions = [
+        question for question in questions
+        if question.casefold() not in existing_text
+    ]
+    return secrets.choice(unused_questions or questions)
 
 
 def _safe_float(val: Any, default: float = 7.0) -> float:
@@ -468,9 +480,9 @@ Rules for next_difficulty:
             stage_instruction = f"STAGE 1 FOLLOW-UP: Ask one natural follow-up grounded in their experience with '{prev_top}', focused on one specific detail or motivation."
         elif stage in ("project", "stage2_project_deepdive"):
             stage_instruction = (
-                f"STAGE 2 PROJECT EXPERIENCE: Ask about a concrete piece of work involving {technology}, such as a feature they implemented, "
-                "a bug they diagnosed, or a technical obstacle they overcame. Do not default to system architecture. "
-                "Choose one angle and ask what the candidate personally did."
+                f"STAGE 2 PROJECT EXPERIENCE: The candidate supplied the technology track '{technology}', but no project details. "
+                f"Invite them to discuss one project where they used {technology}, without assuming or inventing project details. "
+                "Ask about one specific aspect only; do not append a second, unrelated system or scenario."
             )
         elif stage in ("technical_adaptive", "stage3_technical_fundamentals"):
             if adaptive_mode == "deep_dive" and previous_topic:
@@ -502,6 +514,7 @@ CRITICAL RULES FOR GENERATING THE QUESTION:
 5. AVOID FILLER: Do not add greetings, transitions, praise, or phrases like "Here is your next question" or "Great, moving on."
 6. VARY THE INTERVIEW: Follow the stage's requested angle. Do not turn every question into architecture or system design. Prefer concrete engineering work, language/framework behavior, debugging, performance, reliability, and trade-offs where relevant.
 7. NO TOOL CALLS: NEVER output function calls or tool calls. Do NOT output a JSON with 'name' or 'parameters'. Output strictly the JSON schema requested below.
+8. STAY ON SCOPE: Treat the selected Track and Stage Directive as the only subject. Do not invent a project, product, service, metric, or named system the candidate did not provide. In project stage, invite the candidate to supply their own example, but do not combine it with an unrelated scenario (for example, do not pair RAG project experience with API traffic-light monitoring). Ask about one topic and one thing only; avoid joining separate asks with "and".
 
 Return STRICTLY in JSON format with NO markdown wrapping:
 {{
@@ -511,7 +524,7 @@ Return STRICTLY in JSON format with NO markdown wrapping:
   "keywords": ["<keyword1>", "<keyword2>"]
 }}
 """
-        system_prompt = "You are a thoughtful senior technical interviewer. Ask specific, natural spoken questions with enough context to be clear and only one focused ask. Keep them concise, avoid filler, and always output valid JSON strictly matching the requested schema."
+        system_prompt = "You are a thoughtful senior technical interviewer. Stay strictly within the supplied track and stage, never invent candidate project details or unrelated scenarios, and ask one concise, natural spoken question about one topic. Always output valid JSON strictly matching the requested schema."
         raw_output = self._call_llm_for_task("question_gen", prompt, system_prompt=system_prompt)
         if raw_output:
             try:
@@ -547,10 +560,10 @@ Return STRICTLY in JSON format with NO markdown wrapping:
             }
         elif stage in ("project", "stage2_project_deepdive"):
             return {
-                "topic": f"{technology} Project Architecture",
-                "question": f"In your past projects using {technology}, what was a significant architectural decision or performance bottleneck you had to solve?",
-                "expected_answer": f"Explanation of real-world system architecture, design decisions, and bottlenecks in {technology}.",
-                "keywords": [technology, "architecture", "bottlenecks"]
+                "topic": f"{technology} Project Experience",
+                "question": f"If you have used {technology} in a project, what was one technical decision you made about it?",
+                "expected_answer": f"A specific technical decision related to {technology} and the candidate's reasoning.",
+                "keywords": [technology, "project", "technical-decision"]
             }
 
         # Stage 3 Technical concepts fallback bank
@@ -575,10 +588,10 @@ Return STRICTLY in JSON format with NO markdown wrapping:
                     }
 
         return {
-            "topic": f"{technology} Architecture & Best Practices",
-            "question": f"How do you approach error handling and performance optimization when building {difficulty.lower()}-level applications in {technology}?",
-            "expected_answer": f"Clear explanation of design patterns, error handling, memory management, and performance optimization in {technology}.",
-            "keywords": [technology, "architecture", difficulty.lower(), "best-practices"]
+            "topic": f"{technology} Core Concepts",
+            "question": f"What is one core concept in {technology} that you consider essential?",
+            "expected_answer": f"A clear explanation of one core concept in {technology}.",
+            "keywords": [technology, "core-concept", difficulty.lower()]
         }
 
     def generate_resume_question(
@@ -624,11 +637,134 @@ Return STRICTLY in JSON format with NO markdown wrapping:
                 "build on the candidate's demonstrated knowledge."
             )
 
+        if category == "intro":
+            variation_focus = secrets.choice((
+                "career direction and the candidate's path into this field",
+                "the technical strength the candidate is most confident using",
+                "how the candidate's experience connects to the target role",
+                "a recent learning experience that shaped the candidate's interests",
+            ))
+        elif category == "project":
+            project_variations = {
+                "overview": (
+                    "one feature's user-facing behavior",
+                    "how information moves through one part of the project",
+                    "the candidate's personal ownership of one component",
+                    "one integration between technologies named for the project",
+                ),
+                "hurdle_or_bottleneck": (
+                    "the evidence used to narrow down a bug",
+                    "an edge case that caused unexpected behavior",
+                    "how the candidate isolated a failure between components",
+                    "a test or debugging technique used to verify a fix",
+                ),
+                "tradeoffs_or_scaling": (
+                    "a trade-off between simplicity and flexibility",
+                    "the effect of one implementation choice on maintainability",
+                    "a decision about data storage or access, if relevant to the project",
+                    "how the candidate knew an improvement was successful",
+                ),
+            }
+            variation_focus = secrets.choice(project_variations.get(
+                project_aspect,
+                ("one implementation detail", "one debugging decision", "one technical trade-off"),
+            ))
+        elif category in ("technology", "skill"):
+            target_tech = target_technology or resume_data.get("primary_technology") or "the listed technology"
+            progression_stage, _ = _technology_progression(target_tech, question_sequence)
+            technology_variations = {
+                "foundation": (
+                    "a basic data type or value behavior",
+                    "function arguments, defaults, or scope",
+                    "a simple operation and its result",
+                ),
+                "object_oriented": (
+                    "how a class differs from an instance",
+                    "inheritance versus composition",
+                    "how an object encapsulates state and behavior",
+                ),
+                "common_language_feature": (
+                    "a decorator or equivalent reusable behavior",
+                    "lazy iteration or streaming values",
+                    "resource management or cleanup",
+                ),
+                "practical_debugging": (
+                    "how to isolate a failing test",
+                    "how to trace an unexpected value",
+                    "how to narrow an exception to its source",
+                ),
+                "advanced_internals": (
+                    "asynchronous execution and where it helps",
+                    "concurrency limits and how to work around them",
+                    "memory use under a realistic workload",
+                ),
+                "core_model": (
+                    "the technology's core data or object model",
+                    "how state or data is represented",
+                    "a fundamental operation and its behavior",
+                ),
+                "common_feature": (
+                    "a commonly used feature and its practical purpose",
+                    "a feature's effect on application behavior",
+                    "choosing the right built-in mechanism for a task",
+                ),
+                "advanced_application": (
+                    "a performance bottleneck and how to measure it",
+                    "a reliability failure and how to contain it",
+                    "an advanced mechanism and its trade-off",
+                ),
+            }
+            variation_focus = secrets.choice(technology_variations.get(
+                progression_stage,
+                (
+                    f"a core {target_tech} concept",
+                    f"debugging a realistic {target_tech} issue",
+                    f"a performance or reliability trade-off in {target_tech}",
+                ),
+            ))
+        else:
+            variation_focus = "a distinct example grounded in the candidate's background"
+
+        if category == "intro":
+            question_approach = secrets.choice((
+                "open with a short invitation to reflect on the candidate's career path",
+                "start with the candidate's strongest relevant technical skill",
+                "ask how the candidate's background connects to their target role",
+            ))
+        elif category == "project" and project_aspect == "overview":
+            question_approach = secrets.choice((
+                "begin with the user or system outcome, then ask about the candidate's specific contribution",
+                "start with one component's data flow and ask about the candidate's implementation choice",
+                "ask what the candidate personally owned, without using a generic 'walk me through your project' opener",
+            ))
+        elif category == "project" and project_aspect == "hurdle_or_bottleneck":
+            question_approach = secrets.choice((
+                "present the challenge through the evidence used to diagnose it",
+                "start with the unexpected behavior and ask for the first debugging step",
+                "focus on the prevention or verification method rather than asking for a general project summary",
+            ))
+        elif category == "project":
+            question_approach = secrets.choice((
+                "frame the question around the consequence of one engineering trade-off",
+                "ask how the candidate measured the impact of one implementation change",
+                "explore why one option was chosen over an alternative",
+            ))
+        elif category in ("technology", "skill"):
+            question_approach = secrets.choice((
+                "use a brief, concrete example and ask the candidate to explain the underlying behavior",
+                "describe a realistic symptom and ask what mechanism could cause it",
+                "frame the concept as a choice between two approaches and ask for the deciding trade-off",
+                "ask the candidate to predict what happens in a small scenario before explaining why",
+            ))
+        else:
+            question_approach = "use a fresh, specific framing instead of a generic interview opener"
+
         category_instructions = ""
         if category == "intro":
             category_instructions = (
                 "STAGE 1 OPENING: Invite the candidate to introduce themselves and summarize their technical background, "
-                "including experience relevant to the role. Do not ask about projects or technical puzzles."
+                f"including experience relevant to the role. Focus on {variation_focus}; {question_approach}. "
+                "Do not ask about projects or technical puzzles."
             )
         elif category == "intro_followup":
             category_instructions = f"STAGE 1 FOLLOW-UP: Ask one natural follow-up about the candidate's experience with {skills_str}, focusing on what motivated their interest in this area."
@@ -640,22 +776,22 @@ Return STRICTLY in JSON format with NO markdown wrapping:
                 if project_aspect == "overview":
                     category_instructions = (
                         f"STAGE 2 PROJECT EXPERIENCE: Use the candidate's project '{pname}' (Tech Stack: {ptech}. Description: {pdesc}) as context. "
-                        f"Ask about one concrete feature or technical contribution they made. Avoid defaulting to architecture."
+                        f"Ask about {variation_focus} as one concrete contribution; {question_approach}. Avoid defaulting to architecture."
                     )
                 elif project_aspect == "hurdle_or_bottleneck":
                     category_instructions = (
                         f"STAGE 2 PROJECT CHALLENGE: Focus on the candidate's project '{pname}' (Tech Stack: {ptech}. Description: {pdesc}). "
-                        f"Ask about one specific bug, failure, or technical obstacle they encountered and how they investigated it."
+                        f"Ask about {variation_focus} as one specific project challenge and how they investigated it; {question_approach}."
                     )
                 elif project_aspect == "tradeoffs_or_scaling":
                     category_instructions = (
                         f"STAGE 2 PROJECT IMPACT: Focus on the candidate's project '{pname}' (Tech Stack: {ptech}. Description: {pdesc}). "
-                        f"Ask about one technical decision or improvement and its observable impact. Do not add a separate scaling question."
+                        f"Ask about {variation_focus} as one technical decision or improvement and its impact; {question_approach}. Do not add a separate scaling question."
                     )
                 else:
                     category_instructions = (
                         f"STAGE 2 PROJECT DEEP-DIVE: Focus on the candidate's project '{pname}' (Tech Stack: {ptech}). "
-                        f"Ask about one specific design decision or implementation challenge in this project."
+                        f"Ask about {variation_focus} as one specific design decision or implementation challenge; {question_approach}."
                     )
             elif projects:
                 category_instructions = (
@@ -672,6 +808,7 @@ Return STRICTLY in JSON format with NO markdown wrapping:
             category_instructions = (
                 f"STAGE 3 TECH-STACK QUESTION - {progression_stage.upper()}: "
                 f"The candidate lists '{target_tech}' as a skill. {progression_guidance} "
+                f"Vary this run by focusing specifically on {variation_focus}; {question_approach}. "
                 f"This is question {question_sequence + 1} for this technology. "
                 f"Choose one specific concept or realistic situation and do not repeat these topics: {avoid_str}. "
                 f"Do not assume expertise beyond the listed skill. Score adaptation: {score_guidance}"
@@ -699,8 +836,9 @@ CRITICAL RULES FOR GENERATING THE QUESTION:
 3. ONE FOCUSED ASK: Ask one direct question, not a checklist or multiple requests joined with "and". Keep it to 1-2 short sentences and end with a question mark.
 4. CONVERSATIONAL TECHNICAL DISCUSSION: Ask about concepts, mechanisms, design decisions, debugging, or experience that can be explained verbally. Never ask the candidate to write code or solve a coding puzzle.
 5. ACCURATE TO STAGE DIRECTIVE: Follow the stage directive and do not invent candidate or project details that are absent from the resume.
-6. VARY THE INTERVIEW: Across questions, vary between implementation, technical fundamentals, debugging, performance, reliability, and trade-offs instead of repeatedly asking architecture questions.
-7. NO FILLER OR TOOL CALLS: Do not add greetings, transitions, praise, markdown, commentary, or tool calls. Output only the requested JSON.
+6. STRONG NOVELTY: Do not repeat or lightly paraphrase a previous question. Each new question must target a meaningfully different concept, project detail, or reasoning angle from every item in Topics Already Discussed. Do not reuse their central subject even if you change the wording. Follow the supplied variation focus and interviewer approach for this run. Avoid generic repeated openings such as "Can you describe..." or "Walk me through..."; vary sentence structure and begin with the specific situation, decision, or concept.
+7. VARY THE INTERVIEW: Across questions, vary between implementation, technical fundamentals, debugging, performance, reliability, and trade-offs instead of repeatedly asking architecture questions.
+8. NO FILLER OR TOOL CALLS: Do not add greetings, transitions, praise, markdown, commentary, or tool calls. Output only the requested JSON.
 
 Return STRICTLY in JSON format:
 {{
@@ -711,7 +849,7 @@ Return STRICTLY in JSON format:
   "keywords": ["<keyword1>", "<keyword2>"]
 }}
 """
-        system_prompt = "You are a thoughtful experienced interviewer conducting a live verbal resume interview. Ask specific, natural questions grounded in the candidate's resume, with enough context to be clear and only one focused ask. Keep them concise and always output valid JSON strictly matching the requested schema."
+        system_prompt = "You are a thoughtful experienced interviewer conducting a live verbal resume interview. Make every question meaningfully different from all previously discussed questions, follow the supplied variation focus, stay grounded in the resume, and ask one concise, natural question. Always output valid JSON strictly matching the requested schema."
         raw_output = self._call_llm_for_task("question_gen", prompt, system_prompt=system_prompt)
         if raw_output:
             try:
@@ -731,10 +869,15 @@ Return STRICTLY in JSON format:
 
         # Intelligent Fallback Resume Question Generator
         if category == "intro":
+            intro_question = _choose_unused_question([
+                f"Could you introduce yourself by describing your path into software engineering?",
+                f"What part of your technical background best prepares you for the role you are targeting?",
+                f"What is one technical area you have enjoyed developing recently?",
+            ], existing_topics)
             return {
                 "topic": "Candidate Introduction & Background",
                 "category": "intro",
-                "question": f"Welcome {candidate_name}! Could you tell me about yourself and walk me through your technical background and recent work?",
+                "question": intro_question,
                 "expected_answer": f"Candidate introduces themselves, highlights experience with {skills_str}, and describes key technical projects.",
                 "keywords": ["introduction", "background", "experience"]
             }
@@ -752,42 +895,41 @@ Return STRICTLY in JSON format:
             pname = proj.get("name", "Project")
             ptech = ", ".join(proj.get("tech_stack", ["Python"])) or "the tech stack"
             if project_aspect == "overview":
+                project_question = _choose_unused_question([
+                    f"What is one feature you implemented for '{pname}'?",
+                    f"How did one part of '{pname}' use its listed technology stack?",
+                    f"What component of '{pname}' did you personally own?",
+                ], existing_topics)
                 return {
                     "topic": f"Project Contribution: {pname}",
                     "category": "project",
-                    "question": (
-                        f"What is one feature you implemented for '{pname}'?"
-                        if last_score is not None and last_score < 5.0
-                        else (
-                            f"What technical consideration most influenced how you implemented a feature in '{pname}'?"
-                            if last_score is not None and last_score >= 8.0
-                            else f"In '{pname}', what was one implementation decision you made, and what led you to it?"
-                        )
-                    ),
+                    "question": project_question,
                     "expected_answer": f"A specific contribution to {pname} and an explanation appropriate to the candidate's demonstrated level.",
                     "keywords": [pname, "implementation", "contribution"]
                 }
             elif project_aspect == "hurdle_or_bottleneck":
+                project_question = _choose_unused_question([
+                    f"What was one technical issue you encountered while building '{pname}'?",
+                    f"What evidence helped you find the cause of a bug in '{pname}'?",
+                    f"Which edge case required you to change your implementation in '{pname}'?",
+                ], existing_topics)
                 return {
                     "topic": f"Technical Challenge: {pname}",
                     "category": "project",
-                    "question": (
-                        f"What was one technical issue you encountered while building '{pname}'?"
-                        if last_score is not None and last_score < 5.0
-                        else f"When you encountered a technical issue in '{pname}', what evidence helped you identify its cause?"
-                    ),
+                    "question": project_question,
                     "expected_answer": f"A relevant technical challenge in {pname} explained at a level appropriate to the candidate's demonstrated knowledge.",
                     "keywords": [pname, "technical-challenge", "problem-solving"]
                 }
             elif project_aspect == "tradeoffs_or_scaling":
+                project_question = _choose_unused_question([
+                    f"What was one technical choice you made for '{pname}'?",
+                    f"What trade-off mattered most in a decision you made for '{pname}'?",
+                    f"How did you determine whether an improvement to '{pname}' was successful?",
+                ], existing_topics)
                 return {
                     "topic": f"Project Technical Decision: {pname}",
                     "category": "project",
-                    "question": (
-                        f"What was one technical choice you made for '{pname}'?"
-                        if last_score is not None and last_score < 5.0
-                        else f"What was one technical choice you made for '{pname}', and what impact did it have?"
-                    ),
+                    "question": project_question,
                     "expected_answer": f"A concrete technical choice for {pname} and its impact, if appropriate to the candidate's demonstrated level.",
                     "keywords": [pname, ptech, "technical-decision"]
                 }
@@ -815,21 +957,50 @@ Return STRICTLY in JSON format:
 
             if "python" in t_low:
                 python_bank = [
-                    ("Python Fundamentals", "In Python, how would you explain the difference between a list and a tuple to a teammate?"),
-                    ("Object-Oriented Programming", "In Python, what is the difference between a class and an instance?"),
-                    ("Decorators in Python", "In Python, what does a decorator do to a function, and when might you use one?"),
-                    ("Generators & Yield", "How does the yield keyword let a Python function produce values lazily?"),
-                    ("GIL & Concurrency", "When might the Global Interpreter Lock affect a CPU-bound Python application?"),
-                    ("Context Managers", "What problem does a context manager solve when working with files in Python?"),
-                    ("Python Memory Management", "How does Python reclaim memory when objects are no longer in use?")
+                    ("Python Fundamentals", [
+                        "In Python, how does mutability affect what happens when two variables refer to the same list?",
+                        "Why can a mutable default argument cause surprising behavior across Python function calls?",
+                        "How does Python determine whether a variable is local or global inside a function?",
+                    ]),
+                    ("Object-Oriented Programming", [
+                        "In Python, what is the difference between a class and an instance?",
+                        "When would composition be a better choice than inheritance in Python?",
+                        "How does an instance get access to methods defined on its Python class?",
+                    ]),
+                    ("Decorators in Python", [
+                        "In Python, what does a decorator do to a function, and when might you use one?",
+                        "How can a Python decorator add behavior without changing the decorated function's body?",
+                        "What role does a wrapper function play in a Python decorator?",
+                    ]),
+                    ("Generators & Yield", [
+                        "How does the yield keyword let a Python function produce values lazily?",
+                        "When is a Python generator more memory-efficient than building a list?",
+                    ]),
+                    ("GIL & Concurrency", [
+                        "When might the Global Interpreter Lock affect a CPU-bound Python application?",
+                        "Why might adding Python threads fail to speed up CPU-heavy work?",
+                    ]),
+                    ("Context Managers", [
+                        "What problem does a context manager solve when working with files in Python?",
+                        "How does a Python with statement help ensure a resource is cleaned up?",
+                    ]),
+                    ("Python Memory Management", [
+                        "How does Python reclaim memory when objects are no longer in use?",
+                        "Why does Python need garbage collection in addition to reference counting?",
+                    ])
                 ]
                 if last_score is not None and last_score < 5.0:
                     bank_start = 0
                 else:
                     bank_start = min(question_sequence, len(python_bank) - 1)
                 ordered_bank = python_bank[bank_start:] + python_bank[:bank_start]
-                for topic_name, q_text in ordered_bank:
-                    if topic_name.lower() not in existing_str and q_text[:30].lower() not in existing_str:
+                for topic_name, question_options in ordered_bank:
+                    unused_questions = [
+                        question for question in question_options
+                        if question.casefold() not in existing_str
+                    ]
+                    if unused_questions:
+                        q_text = secrets.choice(unused_questions)
                         return {
                             "topic": topic_name,
                             "category": "technology",
@@ -849,14 +1020,36 @@ Return STRICTLY in JSON format:
                 for database_term in ("sql", "dbms", "database", "postgres", "mysql", "sqlite", "mariadb")
             ):
                 sql_bank = [
-                    ("SQL Fundamentals", "How would you use a WHERE clause to filter rows in a SQL query?"),
-                    ("SQL Joins", "When would you use a LEFT JOIN instead of an INNER JOIN?"),
-                    ("Database Indexing", "How does an index help a SQL query that filters a large table?"),
-                    ("Transactions", "What problem do transactions solve when an operation updates several related rows?"),
-                    ("Transaction Isolation", "How can transaction isolation prevent a query from reading another transaction's incomplete changes?")
+                    ("SQL Fundamentals", [
+                        "How would you use a WHERE clause to filter rows in a SQL query?",
+                        "What is the difference between filtering rows with WHERE and filtering groups with HAVING?",
+                    ]),
+                    ("SQL Joins", [
+                        "When would you use a LEFT JOIN instead of an INNER JOIN?",
+                        "Why can a join produce more rows than either of its input tables?",
+                    ]),
+                    ("Database Indexing", [
+                        "How does an index help a SQL query that filters a large table?",
+                        "What is one trade-off of adding an index to a frequently updated table?",
+                    ]),
+                    ("Transactions", [
+                        "What problem do transactions solve when an operation updates several related rows?",
+                        "Why should related database updates succeed or fail as one transaction?",
+                    ]),
+                    ("Transaction Isolation", [
+                        "How can transaction isolation prevent a query from reading another transaction's incomplete changes?",
+                        "What kind of inconsistent result can occur when concurrent transactions are not isolated?",
+                    ])
                 ]
-                for topic_name, q_text in sql_bank:
-                    if topic_name.lower() not in existing_str:
+                bank_start = secrets.randbelow(len(sql_bank))
+                ordered_sql_bank = sql_bank[bank_start:] + sql_bank[:bank_start]
+                for topic_name, question_options in ordered_sql_bank:
+                    unused_questions = [
+                        question for question in question_options
+                        if question.casefold() not in existing_str
+                    ]
+                    if unused_questions:
+                        q_text = secrets.choice(unused_questions)
                         return {
                             "topic": topic_name,
                             "category": "technology",
@@ -864,20 +1057,42 @@ Return STRICTLY in JSON format:
                             "expected_answer": f"Technical breakdown of {topic_name}.",
                             "keywords": [target_tech, topic_name.lower()]
                         }
-            progression_stage, progression_difficulty, _ = _technology_progression(
-                target_tech, question_sequence
-            )
+            progression_stage, _ = _technology_progression(target_tech, question_sequence)
+            progression_difficulty = difficulty
             fallback_questions = (
-                f"What problem does {target_tech} solve in an application?",
-                f"What is one important building block of {target_tech}, and what does it do?",
-                f"How would you use a common {target_tech} feature in a typical task?",
-                f"If something behaved unexpectedly in {target_tech}, what would you check first?",
-                f"What advanced behavior or limitation of {target_tech} matters in a high-load application?",
+                (
+                    f"What problem does {target_tech} solve in an application?",
+                    f"Where would you choose {target_tech} over a simpler alternative?",
+                    f"What role can {target_tech} play in a typical application?",
+                ),
+                (
+                    f"What is one important building block of {target_tech}, and what does it do?",
+                    f"How does {target_tech} represent or process its core data?",
+                    f"What basic operation would you expect any user of {target_tech} to understand?",
+                ),
+                (
+                    f"How would you use a common {target_tech} feature in a typical task?",
+                    f"What kind of task is a built-in {target_tech} feature especially useful for?",
+                    f"When would you reach for a standard {target_tech} mechanism rather than custom code?",
+                ),
+                (
+                    f"If something behaved unexpectedly in {target_tech}, what would you check first?",
+                    f"What evidence would help you trace a bug in a {target_tech} application?",
+                    f"How would you narrow down which part of a {target_tech} workflow caused a failure?",
+                ),
+                (
+                    f"What advanced behavior or limitation of {target_tech} matters in a high-load application?",
+                    f"What {target_tech} performance bottleneck would you measure before trying to optimize?",
+                    f"What reliability trade-off should an experienced {target_tech} developer consider?",
+                ),
             )
+            fallback_stage = min(max(question_sequence, 0), len(fallback_questions) - 1)
             return {
                 "topic": f"{target_tech} {progression_stage.replace('_', ' ').title()}",
                 "category": "technology",
-                "question": fallback_questions[min(max(question_sequence, 0), len(fallback_questions) - 1)],
+                "question": _choose_unused_question(
+                    list(fallback_questions[fallback_stage]), existing_topics
+                ),
                 "expected_answer": f"A clear {progression_difficulty.lower()}-level explanation relevant to {target_tech}.",
                 "keywords": [target_tech, progression_stage]
             }

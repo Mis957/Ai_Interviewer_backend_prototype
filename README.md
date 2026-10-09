@@ -60,32 +60,25 @@ Ai_Interviewer_backend_prototype/
 
 ## ⚙️ Environment Configuration
 
-Refer to the `.env.example` file for `.env` configurations:
+Refer to `.env.example` for the complete environment-variable template. Copy it to `.env` and replace the provider and hosted database placeholders with your own values:
 
-```env
-PROJECT_NAME="AI Interview Readiness Platform Engine"
-OFFLINE_DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
-DATABASE_URL="postgresql://postgres.user:password@aws-0-ap-southeast-2.pooler.supabase.com:6543/postgres"
-
-GEMINI_API_KEY="your-gemini-api-key-here"
-GEMINI_MODEL="gemini-3.6-flash"
-
-GROQ_API_KEY="gsk_your_groq_api_key_here"
-GROQ_MODEL="groq/compound-mini"
-
-AUDIO_STORAGE_DIR="./audio_storage"
-USE_MOCK_SPEECH=False
+```powershell
+Copy-Item .env.example .env
 ```
 
 ### Local Supabase Offline Database
 
-The offline database uses the Supabase CLI's local Postgres service (port `54322` from `supabase/config.toml`). Install Docker and the Supabase CLI, then start the local stack before launching the backend:
+Set `DATABASE_URL` in `.env` to your hosted Supabase PostgreSQL connection string and `OFFLINE_DATABASE_URL` to the local Supabase PostgreSQL connection string. The example uses Supabase's transaction pooler format for the hosted URL; replace its project, region, and password placeholders with your own values. The local URL uses Supabase CLI's local Postgres service and the default port `54322` from `supabase/config.toml`.
+
+Keep `.env` private and never commit it. Only `.env.example` belongs in the repository; it contains placeholders, not credentials. The application defaults to SQLite if `DATABASE_URL` is not set; SQLite mode does not use hosted/local failover. Configure a hosted PostgreSQL URL to enable failover. Before launching the backend with a hosted URL, start Docker Desktop and the local Supabase stack:
 
 ```powershell
-supabase start
+npx --yes supabase start
 ```
 
-Set `OFFLINE_DATABASE_URL` if you changed the default local port or Postgres credentials. When the hosted `DATABASE_URL` cannot be reached, the backend switches to local Supabase and creates or updates its tables from the same SQLAlchemy models. It stays pinned to local Supabase for the life of that backend process, even if the hosted database becomes reachable again; restart the backend to select the hosted database again. Offline-created rows are not automatically synchronized to the hosted database.
+The backend writes to hosted Supabase while it is reachable. If the hosted database connection fails, it writes to local Supabase instead. A background check retries the hosted connection every 30 seconds; once it is reachable, rows from the local database are upserted to hosted Supabase. Local rows are retained after synchronization, and retries are safe if synchronization is interrupted. Check `/health` for the active database, the `offline_database` flag, and the `offline_sync` status (`not_configured`, `not_attempted`, `waiting_for_connection`, `pending`, or `synced`).
+
+Only records present in the local database are sent to hosted Supabase during recovery; online records are not automatically copied down to local Supabase. Starting the backend with no internet therefore requires Docker and the local Supabase stack to be running.
 
 ### Offline Text-to-Speech
 

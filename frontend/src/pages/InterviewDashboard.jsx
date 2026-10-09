@@ -170,6 +170,7 @@ export default function InterviewDashboard() {
                 state: { 
                     sessionData: {
                         ...response,
+                        duration: configData.duration,
                         resumeScreeningResult
                     } 
                 } 
@@ -233,4 +234,3 @@ export default function InterviewDashboard() {
         <Configuration configData={configData} setConfigData={setConfigData} onStart={handleStart} loading={loading} error={error} />
     </div></main></div>
 }
-

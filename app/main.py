@@ -1,23 +1,52 @@
+import asyncio
+import logging
 import os
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.database import (
     get_active_engine,
+    get_offline_sync_status,
     initialize_database_schema,
     is_using_offline_database,
 )
 from app.routers import interview_router, questions_router, analytics_router, resume_router
 
 initialize_database_schema(get_active_engine())
+logger = logging.getLogger(__name__)
+
+
+async def _monitor_database_connection():
+    while True:
+        try:
+            await asyncio.to_thread(get_active_engine)
+        except RuntimeError as error:
+            logger.warning("Database connection check failed: %s", error)
+        await asyncio.sleep(30)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    monitor_task = asyncio.create_task(_monitor_database_connection())
+    try:
+        yield
+    finally:
+        monitor_task.cancel()
+        try:
+            await monitor_task
+        except asyncio.CancelledError:
+            pass
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="Deterministic AI Interview Engine Backend with Clean Architecture & Gemini Evaluation",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # Configure CORS
@@ -56,6 +85,7 @@ def health_check():
         "service": settings.PROJECT_NAME,
         "database": "local_supabase" if is_using_offline_database() else active_engine.dialect.name,
         "offline_database": is_using_offline_database(),
+        "offline_sync": get_offline_sync_status(),
         "storage": settings.AUDIO_STORAGE_DIR
     }
 

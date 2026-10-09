@@ -91,15 +91,17 @@ function InterviewerBadge({ interviewer }) {
   )
 }
 
+const DEFAULT_DURATION_SECONDS = 15 * 60
+
 function parseDurationSeconds(durationStr) {
   if (typeof durationStr === 'number') return durationStr
-  if (!durationStr) return 15 * 60
+  if (!durationStr) return DEFAULT_DURATION_SECONDS
   const match = String(durationStr).match(/(\d+)/)
   if (match) {
     const mins = parseInt(match[1], 10)
     if (!isNaN(mins) && mins > 0) return mins * 60
   }
-  return 15 * 60
+  return DEFAULT_DURATION_SECONDS
 }
 
 /** Session timer — top right */
@@ -348,8 +350,6 @@ function EndSessionModal({ onCancel, onConfirm, isEnding }) {
 // Main Interview Page
 // ─────────────────────────────────────────────────────────────────
 
-const DEFAULT_DURATION_SECONDS = 15 * 60
-
 export default function InterviewLive() {
   const location  = useLocation()
   const navigate  = useNavigate()
@@ -481,11 +481,8 @@ export default function InterviewLive() {
   // ── Handle when timer expires ────────────────────────────────────
   const handleTimerExpired = useCallback(() => {
     setTimerRunning(false)
-    const audio = audioRef.current
-    if (audio) audio.pause()
-    stopMicStream()
     setShowTimerExpiredModal(true)
-  }, [stopMicStream])
+  }, [])
 
   // ── Extend time option ───────────────────────────────────────────
   const handleExtendSession = useCallback((minutes) => {
