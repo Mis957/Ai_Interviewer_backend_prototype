@@ -1,15 +1,83 @@
-﻿const Arrow = () => <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8h10M8.5 3.5 13 8l-4.5 4.5" /></svg>
+import { useEffect, useRef } from 'react'
+import HandwrittenHighlight from './HandwrittenHighlight'
 
 export default function PracticeLoop() {
+  const sectionRef = useRef(null)
+
+  useEffect(() => {
+    const el = sectionRef.current
+    if (!el) return
+
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (prefersReduced) {
+      el.classList.add('revealed')
+      return
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          el.classList.add('revealed')
+          observer.unobserve(el)
+        }
+      },
+      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
   return (
-    <section className="scroll-story" id="start">
-      <div className="shell story-inner">
-        <div className="story-copy"><p className="eyebrow">Built for the whole practice loop</p><h2>Every session moves you forward.</h2><p>Choose your role, speak naturally, and leave with something useful—not just another list of questions.</p><button className="pill dark">Build my first session <Arrow /></button></div>
-        <div className="stack" aria-label="Interview practice flow">
-          <article className="stack-card card-resume"><span>01</span><h3>Your resume</h3><p>Questions grounded in the work you've actually done.</p><div className="resume-lines"><i /><i /><i /></div></article>
-          <article className="stack-card card-voice"><span>02</span><h3>Your voice</h3><p>A calm, structured interview that listens.</p><div className="mini-wave">|||||||||</div></article>
-          <article className="stack-card card-report"><span>03</span><h3>Your next step</h3><p>Feedback that makes the next answer sharper.</p><div className="report-score">82 <small>clarity</small></div></article>
+    <section className="experience-section" id="start" ref={sectionRef}>
+      <div className="experience-orange-glow" aria-hidden="true" />
+      <div className="shell experience-shell">
+        <header className="experience-header">
+          <div className="experience-eyebrow-wrapper">
+            <HandwrittenHighlight color="#ffffff" swoopColor="#ffffff" size="34px">
+              The परिSamvad Experience
+            </HandwrittenHighlight>
+          </div>
+          <h2 className="experience-heading">
+            A conversation.<br />Not a questionnaire.
+          </h2>
+          <p className="experience-sub">
+            Vedanta, your AI interviewer, listens to your voice, follows up on your answers,
+            and responds like a real interviewer would. No typing. No multiple choice. Just the
+            conversation you need to practice.
+          </p>
+        </header>
+
+        {/* Big handwritten logo typo display with hashtag — seamless background, no duplicate box */}
+        <div className="experience-typo-stage">
+          <div className="experience-typo-container">
+            <div className="experience-brand-mark">
+              <span className="experience-handwritten-logo">
+                <span className="experience-deva-glyph">परि</span>Samvad
+              </span>
+              <svg
+                className="experience-crisp-swoop"
+                viewBox="0 0 280 24"
+                fill="none"
+                aria-hidden="true"
+                preserveAspectRatio="none"
+              >
+                <path
+                  d="M4 16 C 75 4, 185 4, 274 14"
+                  stroke="#ffffff"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </div>
+            
+            <div className="experience-hashtag-row">
+              <span className="experience-hashtag">#PracticeTheMomentThatMatters</span>
+              <span className="experience-hashtag-dot">•</span>
+              <span className="experience-hashtag">#SpeakWithClarity</span>
+            </div>
+          </div>
         </div>
+
       </div>
     </section>
   )

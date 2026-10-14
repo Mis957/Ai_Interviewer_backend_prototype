@@ -1,5 +1,8 @@
+import useScrollReveal from './useScrollReveal'
+import HandwrittenHighlight from './HandwrittenHighlight'
+
 const Arrow = () => (
-  <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+  <svg viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
     <path d="M2.5 8h10M8.5 3.5 13 8l-4.5 4.5" />
   </svg>
 )
@@ -56,12 +59,17 @@ const plans = [
 ]
 
 export default function PricingSection() {
+  const ref = useScrollReveal({ threshold: 0.1 })
   return (
-    <section className="pricing-section" id="pricing" aria-labelledby="pricing-heading">
+    <section className="pricing-section" id="pricing" aria-labelledby="pricing-heading" ref={ref}>
       <div className="shell">
 
         <header className="pricing-header">
-          <p className="eyebrow pricing-eyebrow">Pricing</p>
+          <div className="pricing-eyebrow-wrapper">
+            <HandwrittenHighlight size="34px">
+              Transparent investment
+            </HandwrittenHighlight>
+          </div>
           <h2 className="pricing-heading" id="pricing-heading">
             Simple. No surprises.
           </h2>
@@ -83,35 +91,33 @@ export default function PricingSection() {
                   <span className="pricing-savings-badge">{plan.savings}</span>
                 )}
               </div>
-
               <div className="pricing-price-row">
                 <span className="pricing-price">{plan.price}</span>
                 {plan.period && (
                   <span className="pricing-period">{plan.period}</span>
                 )}
               </div>
-
               <p className="pricing-tagline">{plan.tagline}</p>
-
-              <ul className="pricing-features" aria-label={`${plan.name} plan features`}>
-                {plan.features.map((f) => (
-                  <li key={f} className="pricing-feature-item">
-                    <span className="pricing-feature-mark" aria-hidden="true" />
-                    {f}
+              <ul className="pricing-features">
+                {plan.features.map((feat) => (
+                  <li key={feat} className="pricing-feature-item">
+                    <span className="pricing-check" aria-hidden="true">✓</span>
+                    <span>{feat}</span>
                   </li>
                 ))}
               </ul>
-
-              <button className={`pill ${plan.ctaStyle} pricing-cta`}>
-                {plan.cta} <Arrow />
-              </button>
+              <div className="pricing-cta-wrap">
+                <button
+                  className={`pill ${plan.dominant ? 'dark' : 'light'} pricing-cta`}
+                  onClick={() => document.getElementById('start')?.scrollIntoView({ behavior: 'smooth' })}
+                >
+                  <span>{plan.cta}</span>
+                  <Arrow />
+                </button>
+              </div>
             </article>
           ))}
         </div>
-
-        <p className="pricing-note">
-          All plans include voice interview practice. No credit card required to start.
-        </p>
 
       </div>
     </section>
