@@ -12,7 +12,7 @@ export default function FeaturesSection() {
             question set.
           </h2>
           <p className="feat-sub">
-            PrepTalk builds your session from your resume and the role you're targeting—so every question is grounded in context that actually matters.
+            Parisamvad builds your session from your resume and the role you're targeting—so every question is grounded in context that actually matters.
           </p>
         </header>
 
@@ -38,7 +38,7 @@ export default function FeaturesSection() {
               <div className="feat-card-copy">
                 <h3 className="feat-card-title">Built around you, not a template.</h3>
                 <p className="feat-card-desc">
-                  Upload your resume, paste a job description, pick an interview type. PrepTalk generates questions that reflect the actual role—not a generic question bank.
+                  Upload your resume, paste a job description, pick an interview type. Parisamvad generates questions that reflect the actual role—not a generic question bank.
                 </p>
               </div>
             </div>
@@ -51,7 +51,7 @@ export default function FeaturesSection() {
               <div className="feat-card-num">02</div>
               <h3 className="feat-card-title">Real voice. Real pressure.</h3>
               <p className="feat-card-desc">
-                Speak your answers aloud. PrepTalk listens and responds like a real interviewer—no typing, no scripts.
+                Speak your answers aloud. Parisamvad listens and responds like a real interviewer—no typing, no scripts.
               </p>
               <div className="feat-voice-indicator" aria-hidden="true">
                 <span className="feat-voice-bar" style={{ '--h': '14px' }} />

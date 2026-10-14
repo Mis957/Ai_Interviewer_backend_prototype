@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { getStoredUser, currentMockUser } from '../data/mockData'
+import BrandWordmark from './BrandWordmark'
 
 const Icon = ({ name, size = 20 }) => {
   const paths = {
@@ -20,8 +21,7 @@ const Icon = ({ name, size = 20 }) => {
 function Wordmark() {
   return (
     <div className="dash-wordmark">
-      <span className="dash-mark"><i/><i/><i/></span>
-      <b>PrepTalk</b>
+      <BrandWordmark swoopHeight={11} swoopBottom={-6} />
     </div>
   )
 }

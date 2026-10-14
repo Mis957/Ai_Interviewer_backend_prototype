@@ -9,13 +9,13 @@ const steps = [
     num: '01',
     phase: 'Prepare',
     title: 'Build your context.',
-    body: 'Upload your resume. Paste the job description. Choose the interview type. PrepTalk knows what to ask before you even begin.',
+    body: 'Upload your resume. Paste the job description. Choose the interview type. Parisamvad knows what to ask before you even begin.',
   },
   {
     num: '02',
     phase: 'Practice',
     title: 'Have the conversation.',
-    body: 'Speak naturally. PrepTalk listens, responds, and follows up—just like a real interviewer would. No typing. No scripts.',
+    body: 'Speak naturally. Parisamvad listens, responds, and follows up—just like a real interviewer would. No typing. No scripts.',
   },
   {
     num: '03',

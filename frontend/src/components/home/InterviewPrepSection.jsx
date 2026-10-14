@@ -60,7 +60,7 @@ export default function InterviewPrepSection() {
                 Practice for the rounds that get you through the gate.
               </h3>
               <p className="prep-card-desc">
-                Aptitude rounds, group discussions, HR panels, and technical interviews — PrepTalk covers the full placement cycle. Start here, then build out.
+                Aptitude rounds, group discussions, HR panels, and technical interviews — Parisamvad covers the full placement cycle. Start here, then build out.
               </p>
             </div>
             <div className="prep-card-tag" aria-hidden="true">Most popular</div>

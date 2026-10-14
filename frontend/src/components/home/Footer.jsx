@@ -1,3 +1,5 @@
+import BrandWordmark from '../BrandWordmark'
+
 const scrollTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
 
 const footerLinks = {
@@ -36,12 +38,9 @@ export default function Footer() {
             onClick={() => scrollTo('top')}
             aria-label="Back to top"
           >
-            <span className="site-footer-mark" aria-hidden="true">
-              <i /><i /><i />
-            </span>
-            PrepTalk
+            <BrandWordmark swoopColor="#fff" swoopHeight={11} swoopBottom={-6} />
           </button>
-          <p className="site-footer-tagline">Interview readiness, practiced.</p>
+          <p className="site-footer-tagline">AI Interview Practice</p>
         </div>
 
         {/* Link columns */}
@@ -74,8 +73,8 @@ export default function Footer() {
       {/* Bottom bar */}
       <div className="site-footer-bar">
         <div className="site-footer-bar-inner shell">
-          <span className="site-footer-pt" aria-hidden="true">PT.</span>
-          <p className="site-footer-copy">© {year} PrepTalk</p>
+          <span className="site-footer-pt" aria-hidden="true">PS.</span>
+          <p className="site-footer-copy">© {year} Parisamvad</p>
           <button
             className="site-footer-top"
             onClick={() => scrollTo('top')}
