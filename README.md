@@ -51,10 +51,15 @@ Ai_Interviewer_backend_prototype/
 │   │   ├── resume.py           # /resume/* screening endpoints
 │   │   └── analytics.py        # /analytics/* endpoints
 │   └── main.py                 # FastAPI app entrypoint & CORS middleware
+├── frontend/                   # React + Vite परिSamvad Frontend Web App
+│   ├── src/                    # Components, pages, styles, and api client
+│   └── README.md               # Dedicated frontend documentation & setup guide
 ├── seed_data.py                # Pre-populated technical questions seed script
 ├── requirements.txt            # Python dependencies
 └── README.md                   # Project documentation
 ```
+
+For frontend architecture, installation, and design system documentation, see the [Frontend Documentation](frontend/README.md).
 
 ---
 

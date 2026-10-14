@@ -1,97 +1,113 @@
+import useScrollReveal from './useScrollReveal'
+import HandwrittenHighlight from './HandwrittenHighlight'
+
 export default function FeaturesSection() {
+  const ref = useScrollReveal({ threshold: 0.08 })
+
   return (
-    <section className="feat-section" id="features" aria-labelledby="feat-heading">
+    <section className="feat-section" id="features" aria-labelledby="feat-heading" ref={ref}>
       <div className="feat-shell shell">
 
         {/* Header row */}
         <header className="feat-header">
-          <p className="feat-eyebrow eyebrow">Everything you need to practice properly</p>
+          <div className="feat-eyebrow-wrapper">
+            <HandwrittenHighlight size="32px">
+              Everything you need to practice properly
+            </HandwrittenHighlight>
+          </div>
           <h2 className="feat-heading" id="feat-heading">
             Your interview.<br />
             Not a random<br />
             question set.
           </h2>
           <p className="feat-sub">
-            PrepTalk builds your session from your resume and the role you're targeting—so every question is grounded in context that actually matters.
+            Parisamvad builds your session directly from your resume and the role you're targeting—so every question is grounded in context that actually matters.
           </p>
         </header>
 
-        {/* Primary composition */}
-        <div className="feat-composition" aria-label="Feature overview">
+        {/* Balanced, clean 3-card grid */}
+        <div className="feat-grid-clean" aria-label="Key features">
 
-          {/* Large primary card */}
-          <article className="feat-card feat-card--primary" data-feat="personalization">
-            <div className="feat-card-inner">
-              <div className="feat-flow-diagram" aria-hidden="true">
-                <div className="feat-flow-source">
-                  <span className="feat-flow-chip">Resume</span>
-                  <span className="feat-flow-chip">Job description</span>
-                </div>
-                <div className="feat-flow-arrow">
-                  <span className="feat-flow-line" />
-                  <span className="feat-flow-label">generates</span>
-                </div>
-                <div className="feat-flow-output">
-                  <span className="feat-flow-output-text">Personalised interview</span>
-                </div>
+          {/* Card 1 */}
+          <article className="feat-grid-card">
+            <div className="feat-card-top">
+              <span className="feat-card-badge">01</span>
+              <div className="feat-visual-box feat-visual-box--flow">
+                <span className="feat-pill-tag">Resume.pdf</span>
+                <span className="feat-arrow-symbol">→</span>
+                <span className="feat-pill-tag feat-pill-tag--active">Tailored Questions</span>
               </div>
-              <div className="feat-card-copy">
-                <h3 className="feat-card-title">Built around you, not a template.</h3>
-                <p className="feat-card-desc">
-                  Upload your resume, paste a job description, pick an interview type. PrepTalk generates questions that reflect the actual role—not a generic question bank.
-                </p>
-              </div>
+            </div>
+            <div className="feat-card-content">
+              <h3 className="feat-card-title">Built around you, not a template</h3>
+              <p className="feat-card-desc">
+                Upload your resume, paste a target job description, or pick an interview track. Parisamvad grounds every prompt in your actual experience.
+              </p>
             </div>
           </article>
 
-          {/* Right column: 2 supporting cards + label list */}
-          <div className="feat-aside">
-
-            <article className="feat-card feat-card--secondary" data-feat="voice">
-              <div className="feat-card-num">02</div>
-              <h3 className="feat-card-title">Real voice. Real pressure.</h3>
-              <p className="feat-card-desc">
-                Speak your answers aloud. PrepTalk listens and responds like a real interviewer—no typing, no scripts.
-              </p>
-              <div className="feat-voice-indicator" aria-hidden="true">
-                <span className="feat-voice-bar" style={{ '--h': '14px' }} />
-                <span className="feat-voice-bar" style={{ '--h': '22px' }} />
-                <span className="feat-voice-bar" style={{ '--h': '9px' }} />
-                <span className="feat-voice-bar" style={{ '--h': '18px' }} />
-                <span className="feat-voice-bar" style={{ '--h': '12px' }} />
-                <span className="feat-voice-bar" style={{ '--h': '25px' }} />
-                <span className="feat-voice-bar" style={{ '--h': '8px' }} />
+          {/* Card 2 */}
+          <article className="feat-grid-card">
+            <div className="feat-card-top">
+              <span className="feat-card-badge">02</span>
+              <div className="feat-visual-box feat-visual-box--voice">
+                <div className="feat-voice-bars" aria-hidden="true">
+                  <span style={{ height: '14px' }} />
+                  <span style={{ height: '26px' }} />
+                  <span style={{ height: '10px' }} />
+                  <span style={{ height: '32px' }} />
+                  <span style={{ height: '18px' }} />
+                  <span style={{ height: '28px' }} />
+                  <span style={{ height: '12px' }} />
+                </div>
+                <span className="feat-voice-status">Vedanta Listening</span>
               </div>
-            </article>
-
-            <article className="feat-card feat-card--secondary" data-feat="feedback">
-              <div className="feat-card-num">03</div>
-              <h3 className="feat-card-title">Feedback that's actually useful.</h3>
+            </div>
+            <div className="feat-card-content">
+              <h3 className="feat-card-title">Real voice. Real conversation</h3>
               <p className="feat-card-desc">
-                After every session, you get a clear evaluation—not just a score. Understand what worked and what to sharpen.
+                Speak your answers aloud. Vedanta listens, reacts, and asks natural follow-up questions to test your composure under realistic timed pressure.
               </p>
-              <div className="feat-score-preview" aria-hidden="true">
-                <span className="feat-score-num">82</span>
-                <span className="feat-score-label">clarity</span>
+            </div>
+          </article>
+
+          {/* Card 3 */}
+          <article className="feat-grid-card">
+            <div className="feat-card-top">
+              <span className="feat-card-badge">03</span>
+              <div className="feat-visual-box feat-visual-box--score">
+                <span className="feat-score-number">88</span>
+                <div className="feat-score-tags">
+                  <span className="feat-score-rubric">STAR Structure: Strong</span>
+                  <span className="feat-score-rubric">Technical Depth: High</span>
+                </div>
               </div>
-            </article>
+            </div>
+            <div className="feat-card-content">
+              <h3 className="feat-card-title">Rubric feedback that teaches</h3>
+              <p className="feat-card-desc">
+                Receive comprehensive feedback after every session. Discover exactly which answers landed, what lacked depth, and how to structure your responses.
+              </p>
+            </div>
+          </article>
 
-            {/* Small supporting labels */}
-            <ul className="feat-label-list" aria-label="Additional features">
-              <li className="feat-label-item">
-                <span className="feat-label-dot" aria-hidden="true" />
-                Configurable interview length &amp; difficulty
-              </li>
-              <li className="feat-label-item">
-                <span className="feat-label-dot" aria-hidden="true" />
-                Session history &amp; progress tracking
-              </li>
-              <li className="feat-label-item">
-                <span className="feat-label-dot" aria-hidden="true" />
-                All interview types supported
-              </li>
-            </ul>
+        </div>
 
+        {/* Cohesive bottom highlights */}
+        <div className="feat-footer-bar">
+          <div className="feat-bar-item">
+            <span className="feat-bar-check">✓</span>
+            <span>Configurable session lengths (15 to 60 mins)</span>
+          </div>
+          <div className="feat-bar-divider" />
+          <div className="feat-bar-item">
+            <span className="feat-bar-check">✓</span>
+            <span>Performance analytics &amp; score history</span>
+          </div>
+          <div className="feat-bar-divider" />
+          <div className="feat-bar-item">
+            <span className="feat-bar-check">✓</span>
+            <span>Campus, Technical &amp; Leadership tracks</span>
           </div>
         </div>
 

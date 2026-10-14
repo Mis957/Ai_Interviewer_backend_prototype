@@ -52,12 +52,15 @@
   }
 
   .dash-wordmark {
-    gap: 10px;
-    padding-bottom: 20px;
+    gap: 11px;
+    padding-bottom: 22px;
+    font-size: 31px;
+    font-weight: 700;
   }
 
   .dash-wordmark b {
-    font-size: 25px;
+    font-size: 31px;
+    letter-spacing: -.04em;
   }
 
   .dash-mark {
@@ -87,16 +90,16 @@
   }
 
   .side-nav {
-    padding-top: 16px;
+    padding-top: 26px;
   }
 
   .side-nav p {
     font-size: 10px;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
   }
 
   .side-nav p:nth-of-type(2) {
-    margin-top: 22px;
+    margin-top: 28px;
   }
 
   .side-nav button {

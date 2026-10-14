@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import InterviewMockup from './InterviewMockup'
+import BrandWordmark from '../BrandWordmark'
 
 const Arrow = () => <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8h10M8.5 3.5 13 8l-4.5 4.5" /></svg>
 
@@ -11,7 +12,9 @@ export default function HomeHero() {
   return (
     <section className="preptalk-home-hero" id="top">
       <nav className="hero-nav" aria-label="Primary navigation">
-        <button className="hero-wordmark" onClick={() => scrollTo('top')} aria-label="PrepTalk home"><span className="wordmark-mark" aria-hidden="true"><i /><i /><i /></span><span>PrepTalk</span></button>
+        <button className="hero-wordmark" onClick={() => scrollTo('top')} aria-label="Parisamvad home">
+          <BrandWordmark swoopHeight={12} swoopBottom={-7} />
+        </button>
         <div className="hero-nav-links" aria-label="Primary links">
           <button onClick={() => scrollTo('features')}>Features</button>
           <button onClick={() => scrollTo('how')}>How it works</button>

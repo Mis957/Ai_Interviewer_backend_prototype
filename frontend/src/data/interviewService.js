@@ -51,21 +51,27 @@ const MOCK_QUESTIONS = [
 ]
 
 export const MOCK_INTERVIEWERS = {
-  oliver: {
-    name: 'Oliver',
-    role: 'Oliver — AI Interviewer',
+  vedanta: {
+    name: 'Vedanta',
+    role: 'Vedanta — AI Interviewer',
     avatarUrl: null, // Will use generated gradient avatar
+    avatarGradient: 'linear-gradient(135deg, #c084fc, #a855f7, #7c3aed)',
+  },
+  oliver: {
+    name: 'Vedanta',
+    role: 'Vedanta — AI Interviewer',
+    avatarUrl: null,
     avatarGradient: 'linear-gradient(135deg, #c084fc, #a855f7, #7c3aed)',
   },
   alex: {
     name: 'Alex',
-    role: 'Oliver — AI Interviewer',
+    role: 'Vedanta — AI Interviewer',
     avatarUrl: null,
     avatarGradient: 'linear-gradient(135deg, #60a5fa, #3b82f6, #2563eb)',
   },
   david: {
     name: 'David',
-    role: 'Oliver — AI Interviewer',
+    role: 'Vedanta — AI Interviewer',
     avatarUrl: null,
     avatarGradient: 'linear-gradient(135deg, #34d399, #10b981, #059669)',
   },
@@ -76,7 +82,7 @@ export const MOCK_INTERVIEWERS = {
  * Future: replace with real API call.
  */
 export function createMockSession(config = {}) {
-  const interviewer = MOCK_INTERVIEWERS[config.interviewer || 'oliver']
+  const interviewer = MOCK_INTERVIEWERS[config.interviewer || 'vedanta'] || MOCK_INTERVIEWERS.vedanta
   const duration = config.duration || 600 // 10 minutes default
 
   return {

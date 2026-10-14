@@ -7,18 +7,18 @@ import PerformanceReport from '../components/PerformanceReport'
 // ── Interview state machine ──────────────────────────────────────
 const INTERVIEW_STATES = {
   INITIALIZING: 'INITIALIZING',
-  AI_SPEAKING:  'AI_SPEAKING',
-  LISTENING:    'LISTENING',
-  RECORDING:    'RECORDING',   // mic is live, candidate speaking
-  PROCESSING:   'PROCESSING',  // submitted, waiting for backend
-  COMPLETED:    'COMPLETED',
-  ERROR:        'ERROR',
+  AI_SPEAKING: 'AI_SPEAKING',
+  LISTENING: 'LISTENING',
+  RECORDING: 'RECORDING',   // mic is live, candidate speaking
+  PROCESSING: 'PROCESSING',  // submitted, waiting for backend
+  COMPLETED: 'COMPLETED',
+  ERROR: 'ERROR',
 }
 
-// ── Oliver interviewer visual definition ─────────────────────────
-const OLIVER_INTERVIEWER = {
-  name: 'Oliver',
-  role: 'Oliver — AI Interviewer',
+// ── Vedanta interviewer visual definition ─────────────────────────
+const VEDANTA_INTERVIEWER = {
+  name: 'Vedanta',
+  role: 'Vedanta — AI Interviewer',
   avatarUrl: null,
   avatarGradient: 'linear-gradient(135deg, #c084fc, #a855f7, #7c3aed)',
 }
@@ -27,22 +27,30 @@ const OLIVER_INTERVIEWER = {
 function getStatusDisplay(state, interviewerName = 'AI') {
   switch (state) {
     case INTERVIEW_STATES.INITIALIZING:
-      return { label: 'PREPARING INTERVIEW',  dotColor: '#f59e0b' }
+      return { label: 'PREPARING INTERVIEW', dotColor: '#f59e0b' }
     case INTERVIEW_STATES.AI_SPEAKING:
-      return { label: `${interviewerName.toUpperCase()} SPEAKING`, dotColor: '#8b5cf6' }
+      return { label: `${interviewerName.toUpperCase()} SPEAKING`, dotColor: '#c2410c' }
     case INTERVIEW_STATES.LISTENING:
-      return { label: 'YOUR TURN',             dotColor: '#22c55e' }
+      return { label: 'YOUR TURN', dotColor: '#10b981' }
     case INTERVIEW_STATES.RECORDING:
-      return { label: "YOU'RE SPEAKING",       dotColor: '#3b82f6' }
+      return { label: "YOU'RE SPEAKING", dotColor: '#dc2626' }
     case INTERVIEW_STATES.PROCESSING:
-      return { label: 'ANALYZING RESPONSE',    dotColor: '#f59e0b' }
+      return { label: 'ANALYZING RESPONSE', dotColor: '#f59e0b' }
     case INTERVIEW_STATES.COMPLETED:
-      return { label: 'INTERVIEW COMPLETE',    dotColor: '#10b981' }
+      return { label: 'INTERVIEW COMPLETE', dotColor: '#10b981' }
     case INTERVIEW_STATES.ERROR:
-      return { label: 'SOMETHING WENT WRONG',  dotColor: '#ef4444' }
+      return { label: 'SOMETHING WENT WRONG', dotColor: '#ef4444' }
     default:
-      return { label: 'STANDBY',               dotColor: '#94a3b8' }
+      return { label: 'STANDBY', dotColor: '#94a3b8' }
   }
+}
+
+// ── Format recording seconds into mm:ss ──────────────────────────
+function formatRecordingDuration(sec) {
+  if (!sec || sec <= 0) return '00:00'
+  const m = Math.floor(sec / 60)
+  const s = sec % 60
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
 // ── Detect a supported MediaRecorder MIME type ───────────────────
@@ -68,24 +76,16 @@ function getSupportedMimeType() {
 // Sub-components (unchanged visual design)
 // ─────────────────────────────────────────────────────────────────
 
-/** Interviewer badge — top left */
+/** Interviewer badge — top left, editorial Parisamvad pill without avatar */
 function InterviewerBadge({ interviewer }) {
-  const initial = interviewer.name ? interviewer.name[0].toUpperCase() : '?'
   return (
     <div className="interviewer-badge" role="status" aria-label={`Interviewer: ${interviewer.name}`}>
-      <div
-        className="interviewer-avatar"
-        style={{ background: interviewer.avatarGradient || '#a78bfa' }}
-        aria-hidden="true"
-      >
-        {interviewer.avatarUrl
-          ? <img src={interviewer.avatarUrl} alt={interviewer.name} />
-          : <span>{initial}</span>
-        }
-      </div>
+      <span className="interviewer-live-indicator" aria-hidden="true">
+        <span className="interviewer-live-dot" />
+      </span>
       <div className="interviewer-info">
         <div className="interviewer-name">{interviewer.name}</div>
-        <div className="interviewer-role">{interviewer.role}</div>
+        <div className="interviewer-role">AI INTERVIEWER</div>
       </div>
     </div>
   )
@@ -192,7 +192,7 @@ function TimerExpiredModal({ onEndSession, onExtendSession, isEnding }) {
           >
             Extend by +{selectedMinutes} mins &amp; Continue
           </button>
-          
+
           <button
             type="button"
             className="modal-cancel-btn"
@@ -267,8 +267,8 @@ function InterviewStatusIndicator({ state, interviewerName }) {
 
 /** Mic button shown during LISTENING and RECORDING states */
 function MicButton({ state, onStartRecording, onStopRecording, recordingSeconds }) {
-  const isListening  = state === INTERVIEW_STATES.LISTENING
-  const isRecording  = state === INTERVIEW_STATES.RECORDING
+  const isListening = state === INTERVIEW_STATES.LISTENING
+  const isRecording = state === INTERVIEW_STATES.RECORDING
 
   if (!isListening && !isRecording) return null
 
@@ -284,14 +284,14 @@ function MicButton({ state, onStartRecording, onStopRecording, recordingSeconds 
       {isRecording ? (
         <>
           <span className="mic-btn-dot" aria-hidden="true" />
-          STOP  {recordingSeconds > 0 && `(${recordingSeconds}s)`}
+          STOP  {recordingSeconds > 0 && `(${formatRecordingDuration(recordingSeconds)})`}
         </>
       ) : (
         <>
           {/* Inline mic SVG — matches the PrepTalk icon style */}
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-               stroke="currentColor" strokeWidth="2" strokeLinecap="round"
-               strokeLinejoin="round" aria-hidden="true">
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+            strokeLinejoin="round" aria-hidden="true">
             <rect x="8" y="3" width="8" height="12" rx="4" />
             <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
           </svg>
@@ -351,8 +351,8 @@ function EndSessionModal({ onCancel, onConfirm, isEnding }) {
 // ─────────────────────────────────────────────────────────────────
 
 export default function InterviewLive() {
-  const location  = useLocation()
-  const navigate  = useNavigate()
+  const location = useLocation()
+  const navigate = useNavigate()
 
   // ── Session data from InterviewDashboard nav state ───────────────
   const sessionData = location.state?.sessionData
@@ -364,29 +364,29 @@ export default function InterviewLive() {
 
   // ── Interview state machine ──────────────────────────────────────
   const [interviewState, setInterviewState] = useState(INTERVIEW_STATES.INITIALIZING)
-  const [showEndModal,   setShowEndModal]   = useState(false)
+  const [showEndModal, setShowEndModal] = useState(false)
   const [showTimerExpiredModal, setShowTimerExpiredModal] = useState(false)
-  const [addedSeconds, setAddedSeconds]     = useState(0)
-  const [isSaving,       setIsSaving]       = useState(false)
-  const [isEnding,       setIsEnding]       = useState(false)
-  const [timerRunning,   setTimerRunning]   = useState(false)
+  const [addedSeconds, setAddedSeconds] = useState(0)
+  const [isSaving, setIsSaving] = useState(false)
+  const [isEnding, setIsEnding] = useState(false)
+  const [timerRunning, setTimerRunning] = useState(false)
 
   // ── Final Performance Report Data & Errors ────────────────────────
-  const [reportData,     setReportData]     = useState(null)
-  const [endError,       setEndError]       = useState(null)
-  const [submitError,    setSubmitError]    = useState(null)
+  const [reportData, setReportData] = useState(null)
+  const [endError, setEndError] = useState(null)
+  const [submitError, setSubmitError] = useState(null)
 
   // ── Recording state ──────────────────────────────────────────────
   const [recordingSeconds, setRecordingSeconds] = useState(0)
 
   // ── Refs ─────────────────────────────────────────────────────────
-  const audioRef            = useRef(null)   // TTS playback element
-  const mediaRecorderRef    = useRef(null)   // active MediaRecorder instance
-  const audioChunksRef      = useRef([])     // collected Blob chunks
-  const recordingMimeRef    = useRef('')     // actual MIME type used
-  const micStreamRef        = useRef(null)   // getUserMedia stream
-  const recordingTimerRef   = useRef(null)   // seconds counter
-  const isSubmittingRef     = useRef(false)  // duplicate-submit guard
+  const audioRef = useRef(null)   // TTS playback element
+  const mediaRecorderRef = useRef(null)   // active MediaRecorder instance
+  const audioChunksRef = useRef([])     // collected Blob chunks
+  const recordingMimeRef = useRef('')     // actual MIME type used
+  const micStreamRef = useRef(null)   // getUserMedia stream
+  const recordingTimerRef = useRef(null)   // seconds counter
+  const isSubmittingRef = useRef(false)  // duplicate-submit guard
 
   // ── Helper: stop microphone stream tracks ────────────────────────
   const stopMicStream = useCallback(() => {
@@ -439,7 +439,7 @@ export default function InterviewLive() {
       setTimerRunning(true)
     }
 
-    audio.addEventListener('play',  handlePlay)
+    audio.addEventListener('play', handlePlay)
     audio.addEventListener('ended', handleEnded)
     audio.addEventListener('error', handleError)
 
@@ -454,7 +454,7 @@ export default function InterviewLive() {
     })
 
     return () => {
-      audio.removeEventListener('play',  handlePlay)
+      audio.removeEventListener('play', handlePlay)
       audio.removeEventListener('ended', handleEnded)
       audio.removeEventListener('error', handleError)
     }
@@ -502,7 +502,7 @@ export default function InterviewLive() {
     if (audio) audio.pause()
     stopMicStream()
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      try { mediaRecorderRef.current.stop() } catch (e) {}
+      try { mediaRecorderRef.current.stop() } catch (e) { }
     }
     clearInterval(recordingTimerRef.current)
     setTimerRunning(false)
@@ -619,8 +619,8 @@ export default function InterviewLive() {
 
     try {
       const response = await submitAnswer({
-        sessionId:           sessionData.session_id,
-        questionId:          currentQuestion?.question_id          ?? null,
+        sessionId: sessionData.session_id,
+        questionId: currentQuestion?.question_id ?? null,
         generatedQuestionId: currentQuestion?.generated_question_id ?? null,
         audioBlob,
         mimeType,
@@ -628,11 +628,11 @@ export default function InterviewLive() {
 
       // ── Log adaptive signals for runtime verification ────────────
       console.info('[InterviewLive] Evaluation received:', {
-        score:              response.score,
-        confidence_score:   response.confidence_score,
+        score: response.score,
+        confidence_score: response.confidence_score,
         current_difficulty: response.current_difficulty,
-        next_difficulty:    response.next_difficulty,
-        session_completed:  response.session_completed,
+        next_difficulty: response.next_difficulty,
+        session_completed: response.session_completed,
         next_question_text: response.next_question?.question_text ?? null,
       })
 
@@ -691,17 +691,17 @@ export default function InterviewLive() {
           <p style={{ color: '#64748b', fontSize: '0.95rem', lineHeight: '1.5', marginBottom: '1.75rem' }}>
             Please start a new mock interview session from the dashboard to begin.
           </p>
-          <button 
+          <button
             type="button"
-            onClick={() => navigate('/interview/new')} 
-            style={{ 
-              padding: '0.8rem 1.75rem', 
-              background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)', 
-              color: '#ffffff', 
-              border: 'none', 
-              borderRadius: '12px', 
-              cursor: 'pointer', 
-              fontWeight: '700', 
+            onClick={() => navigate('/interview/new')}
+            style={{
+              padding: '0.8rem 1.75rem',
+              background: 'linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '12px',
+              cursor: 'pointer',
+              fontWeight: '700',
               fontSize: '1rem',
               boxShadow: '0 4px 14px rgba(79, 70, 229, 0.3)'
             }}
@@ -727,7 +727,7 @@ export default function InterviewLive() {
   }
 
   const isInitializing = interviewState === INTERVIEW_STATES.INITIALIZING
-  const questionText   = currentQuestion?.question_text || ''
+  const questionText = currentQuestion?.question_text || ''
 
   const durationSeconds = parseDurationSeconds(sessionData?.duration) + addedSeconds
 
@@ -743,7 +743,7 @@ export default function InterviewLive() {
 
         {/* ── Header ──────────────────────────────────────────────── */}
         <header className="interview-header">
-          <InterviewerBadge interviewer={OLIVER_INTERVIEWER} />
+          <InterviewerBadge interviewer={VEDANTA_INTERVIEWER} />
           <SessionTimer
             duration={durationSeconds}
             isRunning={timerRunning && interviewState !== INTERVIEW_STATES.COMPLETED}
@@ -758,7 +758,7 @@ export default function InterviewLive() {
             audioLevel={0}
             onReplayAudio={
               interviewState === INTERVIEW_STATES.LISTENING ||
-              interviewState === INTERVIEW_STATES.AI_SPEAKING
+                interviewState === INTERVIEW_STATES.AI_SPEAKING
                 ? handleReplayAudio
                 : undefined
             }
@@ -790,7 +790,7 @@ export default function InterviewLive() {
         <footer className="interview-bottom">
           <InterviewStatusIndicator
             state={interviewState}
-            interviewerName={OLIVER_INTERVIEWER.name}
+            interviewerName={VEDANTA_INTERVIEWER.name}
           />
 
           {/* Mic button — visible only in LISTENING / RECORDING */}
