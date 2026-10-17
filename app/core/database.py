@@ -23,7 +23,7 @@ def _create_engine(db_url):
 _primary_engine = _create_engine(settings.DATABASE_URL)
 _offline_engine = (
     _create_engine(settings.OFFLINE_DATABASE_URL)
-    if settings.OFFLINE_DATABASE_URL != settings.DATABASE_URL
+    if settings.OFFLINE_DATABASE_URL and settings.OFFLINE_DATABASE_URL != settings.DATABASE_URL
     else None
 )
 _active_engine = _primary_engine
@@ -127,10 +127,11 @@ def get_active_engine():
                 _sync_local_data_to_primary(_offline_engine, _primary_engine)
             except (SQLAlchemyError, RuntimeError) as sync_error:
                 _last_sync_error = _safe_database_error(sync_error)
-                logger.exception(
-                    "Could not sync local Supabase data to the hosted database; "
+                logger.warning(
+                    "Could not sync local Supabase data to the hosted database (%s); "
                     "the local data is retained and synchronization will retry. "
-                    "New database requests will use the hosted database."
+                    "New database requests will use the hosted database.",
+                    _last_sync_error,
                 )
             else:
                 _last_sync_error = None
@@ -231,52 +232,55 @@ def create_db_session():
 
 
 def ensure_database_schema(eng):
-    with eng.connect() as conn:
-        driver = eng.url.drivername
-        if "postgresql" in driver:
-            conn.execute(text("ALTER TABLE interview_answers ADD COLUMN IF NOT EXISTS confidence_score FLOAT DEFAULT 8.0;"))
-            conn.execute(text("ALTER TABLE interview_answers ADD COLUMN IF NOT EXISTS fluency_feedback TEXT;"))
-            conn.execute(text("ALTER TABLE interview_answers ADD COLUMN IF NOT EXISTS missing_topics JSONB;"))
-            conn.execute(text("ALTER TABLE interview_answers ADD COLUMN IF NOT EXISTS filler_words_detected JSONB;"))
-            conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS mode VARCHAR(50) DEFAULT 'standard';"))
-            conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS target_role VARCHAR(255);"))
-            conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS years_of_experience VARCHAR(50);"))
-            conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS resume_text TEXT;"))
-            conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS resume_data JSONB;"))
-            conn.execute(text("ALTER TABLE interview_sessions ALTER COLUMN technology TYPE VARCHAR(255);"))
-            conn.execute(text("ALTER TABLE questions ALTER COLUMN technology TYPE VARCHAR(255);"))
-            conn.execute(text("ALTER TABLE questions ALTER COLUMN topic TYPE VARCHAR(255);"))
-            conn.execute(text("ALTER TABLE generated_questions ALTER COLUMN technology TYPE VARCHAR(255);"))
-            conn.execute(text("ALTER TABLE generated_questions ALTER COLUMN topic TYPE VARCHAR(255);"))
-            conn.commit()
-        elif "sqlite" in driver:
-            res_ans = conn.execute(text("PRAGMA table_info(interview_answers)"))
-            cols_ans = [row[1] for row in res_ans.fetchall()]
-            if cols_ans:
-                missing_ans = {
-                    "confidence_score": "FLOAT DEFAULT 8.0",
-                    "fluency_feedback": "TEXT",
-                    "missing_topics": "JSON",
-                    "filler_words_detected": "JSON"
-                }
-                for col_name, col_type in missing_ans.items():
-                    if col_name not in cols_ans:
-                        conn.execute(text(f"ALTER TABLE interview_answers ADD COLUMN {col_name} {col_type}"))
+    try:
+        with eng.connect() as conn:
+            driver = eng.url.drivername
+            if "postgresql" in driver:
+                conn.execute(text("ALTER TABLE interview_answers ADD COLUMN IF NOT EXISTS confidence_score FLOAT DEFAULT 8.0;"))
+                conn.execute(text("ALTER TABLE interview_answers ADD COLUMN IF NOT EXISTS fluency_feedback TEXT;"))
+                conn.execute(text("ALTER TABLE interview_answers ADD COLUMN IF NOT EXISTS missing_topics JSONB;"))
+                conn.execute(text("ALTER TABLE interview_answers ADD COLUMN IF NOT EXISTS filler_words_detected JSONB;"))
+                conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS mode VARCHAR(50) DEFAULT 'standard';"))
+                conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS target_role VARCHAR(255);"))
+                conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS years_of_experience VARCHAR(50);"))
+                conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS resume_text TEXT;"))
+                conn.execute(text("ALTER TABLE interview_sessions ADD COLUMN IF NOT EXISTS resume_data JSONB;"))
+                conn.execute(text("ALTER TABLE interview_sessions ALTER COLUMN technology TYPE VARCHAR(255);"))
+                conn.execute(text("ALTER TABLE questions ALTER COLUMN technology TYPE VARCHAR(255);"))
+                conn.execute(text("ALTER TABLE questions ALTER COLUMN topic TYPE VARCHAR(255);"))
+                conn.execute(text("ALTER TABLE generated_questions ALTER COLUMN technology TYPE VARCHAR(255);"))
+                conn.execute(text("ALTER TABLE generated_questions ALTER COLUMN topic TYPE VARCHAR(255);"))
+                conn.commit()
+            elif "sqlite" in driver:
+                res_ans = conn.execute(text("PRAGMA table_info(interview_answers)"))
+                cols_ans = [row[1] for row in res_ans.fetchall()]
+                if cols_ans:
+                    missing_ans = {
+                        "confidence_score": "FLOAT DEFAULT 8.0",
+                        "fluency_feedback": "TEXT",
+                        "missing_topics": "JSON",
+                        "filler_words_detected": "JSON"
+                    }
+                    for col_name, col_type in missing_ans.items():
+                        if col_name not in cols_ans:
+                            conn.execute(text(f"ALTER TABLE interview_answers ADD COLUMN {col_name} {col_type}"))
 
-            res_sess = conn.execute(text("PRAGMA table_info(interview_sessions)"))
-            cols_sess = [row[1] for row in res_sess.fetchall()]
-            if cols_sess:
-                missing_sess = {
-                    "mode": "VARCHAR(50) DEFAULT 'standard'",
-                    "target_role": "VARCHAR(255)",
-                    "years_of_experience": "VARCHAR(50)",
-                    "resume_text": "TEXT",
-                    "resume_data": "JSON"
-                }
-                for col_name, col_type in missing_sess.items():
-                    if col_name not in cols_sess:
-                        conn.execute(text(f"ALTER TABLE interview_sessions ADD COLUMN {col_name} {col_type}"))
-            conn.commit()
+                res_sess = conn.execute(text("PRAGMA table_info(interview_sessions)"))
+                cols_sess = [row[1] for row in res_sess.fetchall()]
+                if cols_sess:
+                    missing_sess = {
+                        "mode": "VARCHAR(50) DEFAULT 'standard'",
+                        "target_role": "VARCHAR(255)",
+                        "years_of_experience": "VARCHAR(50)",
+                        "resume_text": "TEXT",
+                        "resume_data": "JSON"
+                    }
+                    for col_name, col_type in missing_sess.items():
+                        if col_name not in cols_sess:
+                            conn.execute(text(f"ALTER TABLE interview_sessions ADD COLUMN {col_name} {col_type}"))
+                conn.commit()
+    except Exception as e:
+        logger.warning("Database schema migration check warning: %s", e)
 
 
 def initialize_database_schema(eng=None):

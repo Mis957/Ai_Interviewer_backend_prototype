@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     
     # Database
     DATABASE_URL: str = "sqlite:///./interview_prototype.db"
-    OFFLINE_DATABASE_URL: str = "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+    OFFLINE_DATABASE_URL: str | None = None
     
     # LM Studio Local AI
     LM_STUDIO_BASE_URL: str = "http://192.168.240.1:1234/v1"
