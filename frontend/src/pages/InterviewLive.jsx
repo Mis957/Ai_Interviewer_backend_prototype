@@ -404,59 +404,92 @@ export default function InterviewLive() {
   }, [sessionData, navigate])
 
   // ── TTS playback effect ──────────────────────────────────────────
-  // Fires whenever currentQuestion changes.
-  // State machine is driven exclusively by real audio events — no fake timers.
+  // Plays the synthesized question audio from the backend (<audio ref={audioRef} />).
+  // Strictly single-stream: no window.speechSynthesis to avoid double audio.
   useEffect(() => {
+    // Cancel any stray speech synthesis from browser
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel()
+    }
+
     const audio = audioRef.current
-    if (!audio || !currentQuestion) return
+    if (!currentQuestion || !audio) return
 
     const audioUrl = getAudioUrl(currentQuestion.audio_url)
-
     if (!audioUrl) {
-      // No audio for this question — go straight to LISTENING
       setInterviewState(INTERVIEW_STATES.LISTENING)
       setTimerRunning(true)
       return
     }
 
-    // Stop any currently playing audio
+    // Stop and reset any prior playback
     audio.pause()
     audio.currentTime = 0
 
+    let isCurrent = true
+
     const handlePlay = () => {
-      setInterviewState(INTERVIEW_STATES.AI_SPEAKING)
-      setTimerRunning(true)
+      if (isCurrent) {
+        setInterviewState(INTERVIEW_STATES.AI_SPEAKING)
+        setTimerRunning(true)
+      }
     }
 
     const handleEnded = () => {
-      setInterviewState(INTERVIEW_STATES.LISTENING)
+      if (isCurrent) {
+        setInterviewState(INTERVIEW_STATES.LISTENING)
+      }
     }
 
     const handleError = () => {
-      console.warn('[InterviewLive] Audio playback error for:', audioUrl)
-      // Graceful fallback: skip to LISTENING so candidate can still answer
-      setInterviewState(INTERVIEW_STATES.LISTENING)
-      setTimerRunning(true)
+      if (isCurrent) {
+        setInterviewState(INTERVIEW_STATES.LISTENING)
+        setTimerRunning(true)
+      }
     }
 
     audio.addEventListener('play', handlePlay)
     audio.addEventListener('ended', handleEnded)
     audio.addEventListener('error', handleError)
 
-    audio.src = audioUrl
-    audio.load()
-    audio.play().catch((err) => {
-      console.warn('[InterviewLive] Autoplay blocked:', err.message)
-      // Autoplay policy blocked — let candidate click orb to replay,
-      // and transition to LISTENING so mic button appears.
-      setInterviewState(INTERVIEW_STATES.LISTENING)
-      setTimerRunning(true)
-    })
+    if (audio.src !== audioUrl) {
+      audio.src = audioUrl
+      audio.load()
+    }
+
+    const playPromise = audio.play()
+    if (playPromise !== undefined) {
+      playPromise.catch((err) => {
+        // Autoplay may be restricted by the browser until candidate interacts
+        console.info('[InterviewLive] Autoplay waiting for candidate interaction:', err.message)
+        if (isCurrent) {
+          setInterviewState(INTERVIEW_STATES.LISTENING)
+          setTimerRunning(true)
+        }
+      })
+    }
 
     return () => {
+      isCurrent = false
+      audio.pause()
       audio.removeEventListener('play', handlePlay)
       audio.removeEventListener('ended', handleEnded)
       audio.removeEventListener('error', handleError)
+    }
+  }, [currentQuestion])
+
+  // Fallback interaction listener: if initial autoplay was blocked by the browser,
+  // the candidate's first click anywhere on the page smoothly starts the interviewer audio.
+  useEffect(() => {
+    const playOnFirstInteraction = () => {
+      const audio = audioRef.current
+      if (audio && audio.paused && !audio.ended && audio.src && audio.currentTime === 0) {
+        audio.play().catch(() => {})
+      }
+    }
+    window.addEventListener('click', playOnFirstInteraction, { once: true })
+    return () => {
+      window.removeEventListener('click', playOnFirstInteraction)
     }
   }, [currentQuestion])
 
@@ -464,19 +497,34 @@ export default function InterviewLive() {
   useEffect(() => {
     return () => {
       const audio = audioRef.current
-      if (audio) { audio.pause(); audio.src = '' }
+      if (audio) {
+        audio.pause()
+        audio.src = ''
+      }
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel()
+      }
       stopMicStream()
       clearInterval(recordingTimerRef.current)
     }
   }, [stopMicStream])
 
-  // ── Replay TTS audio — orb click ────────────────────────────────
+  // ── Replay TTS audio — triggered if candidate clicks AI orb ──────
   const handleReplayAudio = useCallback(() => {
     const audio = audioRef.current
-    if (!audio || !audio.src) return
-    audio.currentTime = 0
-    audio.play().catch(err => console.warn('[InterviewLive] Replay failed:', err.message))
-  }, [])
+    const audioUrl = getAudioUrl(currentQuestion?.audio_url)
+
+    if (audio && audioUrl) {
+      if (!audio.src || !audio.src.includes(audioUrl.split('/').pop())) {
+        audio.src = audioUrl
+        audio.load()
+      }
+      audio.currentTime = 0
+      audio.play().catch(err => {
+        console.warn('[InterviewLive] Replay prevented:', err.message)
+      })
+    }
+  }, [currentQuestion])
 
   // ── Handle when timer expires ────────────────────────────────────
   const handleTimerExpired = useCallback(() => {

@@ -26,7 +26,7 @@ export const getStoredUser = () => {
   } catch (e) {
     console.error('Error reading stored user', e)
   }
-  return currentMockUser
+  return null
 }
 
 export const saveStoredUser = (user) => {

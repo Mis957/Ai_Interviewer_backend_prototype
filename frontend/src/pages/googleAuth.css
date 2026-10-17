@@ -1,0 +1,328 @@
+/* ── Google Authentic OAuth Sign-in Page Styling ─────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+
+.google-auth-container {
+  min-height: 100vh;
+  background-color: #f0f4f9;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 24px 16px;
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  box-sizing: border-box;
+}
+
+.google-auth-card {
+  background: #ffffff;
+  border-radius: 28px;
+  width: 100%;
+  max-width: 448px;
+  padding: 40px 36px 36px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  border: 1px solid #e0e3e7;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  animation: googleCardFadeIn 0.3s ease-out;
+}
+
+@keyframes googleCardFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Google indeterminate loading line */
+.google-loading-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background-color: #e8f0fe;
+  overflow: hidden;
+}
+
+.google-loading-bar::after {
+  content: '';
+  position: absolute;
+  left: -50%;
+  height: 100%;
+  width: 50%;
+  background-color: #1a73e8;
+  animation: googleLoadingAnim 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes googleLoadingAnim {
+  0% { left: -50%; width: 50%; }
+  50% { left: 25%; width: 60%; }
+  100% { left: 100%; width: 50%; }
+}
+
+.google-logo-wrapper {
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.google-auth-title {
+  font-size: 24px;
+  font-weight: 500;
+  color: #1f1f1f;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.2px;
+}
+
+.google-auth-subtitle {
+  font-size: 16px;
+  color: #444746;
+  margin: 0 0 28px 0;
+  font-weight: 400;
+}
+
+.google-app-name {
+  font-weight: 500;
+  color: #1f1f1f;
+}
+
+.google-auth-error {
+  background-color: #fce8e6;
+  border-left: 4px solid #d93025;
+  color: #c5221f;
+  padding: 10px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+
+/* ── Account Chooser List ────────────────────────────────────────── */
+.google-account-list {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 24px;
+}
+
+.google-account-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 12px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #f1f3f4;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s ease;
+  border-radius: 8px;
+}
+
+.google-account-item:last-child {
+  border-bottom: none;
+}
+
+.google-account-item:hover:not(:disabled) {
+  background-color: #f8fafd;
+}
+
+.google-account-item:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.google-account-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 500;
+  margin-right: 14px;
+  flex-shrink: 0;
+}
+
+.google-another-avatar {
+  background-color: #f1f3f4;
+  color: #5f6368;
+}
+
+.google-account-details {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.google-account-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1f1f1f;
+}
+
+.google-account-email {
+  font-size: 12px;
+  color: #5f6368;
+  margin-top: 2px;
+}
+
+/* ── Custom Email Form ──────────────────────────────────────────── */
+.google-auth-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.google-input-group {
+  position: relative;
+  width: 100%;
+}
+
+.google-input {
+  width: 100%;
+  height: 54px;
+  padding: 16px 14px 6px;
+  font-size: 16px;
+  color: #1f1f1f;
+  background-color: #ffffff;
+  border: 1px solid #747775;
+  border-radius: 4px;
+  outline: none;
+  box-sizing: border-box;
+  font-family: inherit;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.google-input:focus {
+  border-color: #0b57d0;
+  border-width: 2px;
+  padding: 15px 13px 5px;
+}
+
+.google-floating-label {
+  position: absolute;
+  top: 18px;
+  left: 14px;
+  color: #444746;
+  font-size: 16px;
+  pointer-events: none;
+  transition: 0.2s ease all;
+  background-color: transparent;
+}
+
+.google-input:focus ~ .google-floating-label,
+.google-input:not(:placeholder-shown) ~ .google-floating-label {
+  top: 6px;
+  left: 14px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #0b57d0;
+}
+
+.google-disclaimer {
+  font-size: 12px;
+  color: #5f6368;
+  line-height: 1.5;
+  margin: 20px 0 28px 0;
+}
+
+.google-form-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.google-secondary-btn {
+  background: transparent;
+  border: none;
+  color: #0b57d0;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 100px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.google-secondary-btn:hover:not(:disabled) {
+  background-color: #e8f0fe;
+}
+
+.google-primary-btn {
+  background-color: #0b57d0;
+  color: #ffffff;
+  border: none;
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 100px;
+  cursor: pointer;
+  transition: background-color 0.15s, box-shadow 0.15s;
+}
+
+.google-primary-btn:hover:not(:disabled) {
+  background-color: #0842a0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.google-primary-btn:disabled,
+.google-secondary-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.google-auth-card-footer {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid #f1f3f4;
+  text-align: center;
+}
+
+.google-cancel-link {
+  color: #5f6368;
+  font-size: 13px;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.google-cancel-link:hover {
+  color: #1f1f1f;
+  text-decoration: underline;
+}
+
+/* ── Standard Page Footer ───────────────────────────────────────── */
+.google-page-footer {
+  width: 100%;
+  max-width: 448px;
+  margin-top: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #444746;
+  padding: 0 8px;
+  box-sizing: border-box;
+}
+
+.google-lang-selector {
+  cursor: pointer;
+}
+
+.google-footer-links {
+  display: flex;
+  gap: 24px;
+}
+
+.google-footer-links span {
+  cursor: pointer;
+}
+
+.google-footer-links span:hover {
+  color: #1f1f1f;
+}

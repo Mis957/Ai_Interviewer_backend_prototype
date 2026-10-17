@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { getStoredUser, currentMockUser } from '../data/mockData'
+import { signOutUser } from '../services/supabaseClient'
 import BrandWordmark from './BrandWordmark'
 
 const Icon = ({ name, size = 20 }) => {
@@ -59,8 +60,13 @@ export default function Sidebar({ active: activeProp }) {
 
   const isSettingsActive = activeProp ? activeProp === 'Settings' : currentPath === '/settings'
 
+  const handleLogout = async () => {
+    await signOutUser()
+    navigate('/login')
+  }
+
   const safeUser = user || currentMockUser
-  const avatarChar = (safeUser.name ? safeUser.name.trim()[0] : 'K').toUpperCase()
+  const avatarChar = (safeUser.name ? safeUser.name.trim()[0] : 'C').toUpperCase()
 
   return (
     <aside className="sidebar">
@@ -68,8 +74,8 @@ export default function Sidebar({ active: activeProp }) {
       <div className="sidebar-user">
         <span>{safeUser.avatar || avatarChar}</span>
         <div>
-          <b>{safeUser.name || 'Kirtan Patel'}</b>
-          <small>{safeUser.email || 'kirtan1999@gmail.com'}</small>
+          <b>{safeUser.name || 'Candidate'}</b>
+          <small>{safeUser.email || 'candidate@parisamvad.ai'}</small>
         </div>
       </div>
       
@@ -100,7 +106,7 @@ export default function Sidebar({ active: activeProp }) {
       </nav>
 
       <div className="sidebar-bottom">
-        <button className="logout" onClick={() => navigate('/login')}>
+        <button className="logout" onClick={handleLogout}>
           <Icon name="logout" />Logout
         </button>
         <div className="side-script">

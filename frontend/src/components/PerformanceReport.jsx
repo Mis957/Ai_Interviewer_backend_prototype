@@ -30,7 +30,7 @@ export default function PerformanceReport({ report, resumeScreeningResult, onRes
           marginBottom: '1rem',
           border: '1px solid #a7f3d0'
         }}>
-          <Sparkles size={16} /> PrepTalk Evaluation Report
+          <Sparkles size={16} /> Parisamvad Evaluation Report
         </div>
         <h1 style={{ fontSize: '2.25rem', fontWeight: '800', color: '#0f172a', marginBottom: '0.5rem', letterSpacing: '-0.02em' }}>
           Interview Performance &amp; Evaluation

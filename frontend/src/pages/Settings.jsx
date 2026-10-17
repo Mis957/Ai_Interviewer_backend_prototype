@@ -103,7 +103,7 @@ export default function Settings() {
             <hr style={{ border: 0, borderTop: '1px solid #eeedf0', margin: '0 0 35px' }} />
 
             <h2 className="manual-heading-title" style={{ fontSize: '24px', marginBottom: '8px' }}>App Preferences</h2>
-            <p style={{ color: 'var(--dash-muted)', fontSize: '15px', marginBottom: '25px' }}>Customize how PrepTalk works for you across all sessions.</p>
+            <p style={{ color: 'var(--dash-muted)', fontSize: '15px', marginBottom: '25px' }}>Customize how Parisamvad works for you across all sessions.</p>
 
             <div className="fields-grid" style={{ gap: '20px', marginBottom: '35px' }}>
               <label className="manual-field">

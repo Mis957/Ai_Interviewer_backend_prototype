@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { getCurrentUser } from '../../services/supabaseClient'
 import AuthDots from './AuthDots'
 import AuthForm from './AuthForm'
 import BrandWordmark from '../BrandWordmark'
@@ -19,6 +21,13 @@ function AuthWordmark() {
 
 export default function AuthPage({ mode }) {
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const user = getCurrentUser()
+    if (user) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [navigate])
 
   const switchMode = () =>
     navigate(mode === 'login' ? '/signup' : '/login', { replace: true })

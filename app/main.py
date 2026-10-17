@@ -12,7 +12,7 @@ from app.core.database import (
     initialize_database_schema,
     is_using_offline_database,
 )
-from app.routers import interview_router, questions_router, analytics_router, resume_router
+from app.routers import interview_router, questions_router, analytics_router, resume_router, auth_router
 
 initialize_database_schema(get_active_engine())
 logger = logging.getLogger(__name__)
@@ -67,6 +67,7 @@ app.include_router(interview_router)
 app.include_router(questions_router)
 app.include_router(analytics_router)
 app.include_router(resume_router)
+app.include_router(auth_router)
 
 @app.get("/", tags=["System"])
 def root():
