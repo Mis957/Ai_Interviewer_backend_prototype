@@ -94,8 +94,10 @@ async def get_current_question(
         technology=session.technology,
         difficulty=session.current_difficulty
     )
-    audio_path = await engine.audio_service.text_to_speech(question_payload.question_text)
-    question_payload.audio_url = audio_path if audio_path and os.path.exists(audio_path) else None
+    if audio_path and os.path.exists(audio_path):
+        question_payload.audio_url = f"/audio/{os.path.basename(audio_path)}"
+    else:
+        question_payload.audio_url = None
     return question_payload
 
 @router.post("/answer", response_model=AnswerEvaluationResponse)

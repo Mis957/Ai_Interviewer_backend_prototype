@@ -177,7 +177,7 @@ class GeminiService:
             "temperature": 0.7,
             "max_tokens": max_tok
         }
-        response = requests.post(url, json=payload, headers=headers, timeout=120)
+        response = requests.post(url, json=payload, headers=headers, timeout=(2.5, 120))
         response.raise_for_status()
         data = response.json()
         choices = data.get("choices", [])

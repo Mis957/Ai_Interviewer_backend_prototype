@@ -120,7 +120,10 @@ class InterviewEngineService:
 
         # Convert question text to speech
         audio_path = await self.audio_service.text_to_speech(first_q.question_text)
-        first_q.audio_url = audio_path if audio_path and os.path.exists(audio_path) else None
+        if audio_path and os.path.exists(audio_path):
+            first_q.audio_url = f"/audio/{os.path.basename(audio_path)}"
+        else:
+            first_q.audio_url = None
 
         return InterviewStartResponse(
             session_id=session.id,
@@ -255,7 +258,10 @@ class InterviewEngineService:
             )
         # Synthesize TTS for next question
         audio_path = await self.audio_service.text_to_speech(next_q_payload.question_text)
-        next_q_payload.audio_url = audio_path if audio_path and os.path.exists(audio_path) else None
+        if audio_path and os.path.exists(audio_path):
+            next_q_payload.audio_url = f"/audio/{os.path.basename(audio_path)}"
+        else:
+            next_q_payload.audio_url = None
 
         return AnswerEvaluationResponse(
             answer_id=answer_record.id,

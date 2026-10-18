@@ -1,5 +1,11 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
+import {
+  signInUser,
+  signUpUser,
+  signInWithGoogle,
+  resetPasswordForEmail,
+} from '../../services/supabaseClient'
 
 /* ── Inline SVG icons ──────────────────────────────────────── */
 const EyeIcon = () => (
@@ -38,8 +44,8 @@ function validate(fields, mode) {
   }
   if (!fields.password) {
     errors.password = 'Please enter your password.'
-  } else if (mode === 'signup' && fields.password.length < 8) {
-    errors.password = 'Password must be at least 8 characters.'
+  } else if (mode === 'signup' && fields.password.length < 6) {
+    errors.password = 'Password must be at least 6 characters.'
   }
   if (mode === 'signup') {
     if (!fields.name.trim()) errors.name = 'Please enter your full name.'
@@ -115,54 +121,106 @@ function PwField({ id, label, value, onChange, error, errId, autoComplete, right
 /* ── AuthForm ──────────────────────────────────────────────── */
 export default function AuthForm({ mode, onSwitch }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const isLogin = mode === 'login'
 
   const [fields, setFields] = useState({ name: '', email: '', password: '', confirmPassword: '' })
   const [errors, setErrors] = useState({})
+  const [serverError, setServerError] = useState('')
+  const [successMsg, setSuccessMsg] = useState('')
   const [loading, setLoading] = useState(false)
-  const [forgotMsg, setForgotMsg] = useState(false)
 
   const set = (key) => (e) => {
     setFields(f => ({ ...f, [key]: e.target.value }))
     if (errors[key]) setErrors(err => { const n = { ...err }; delete n[key]; return n })
+    if (serverError) setServerError('')
   }
 
   /* ── Submit ──────────────────────────────────────────────── */
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
+    setServerError('')
+    setSuccessMsg('')
+
     const errs = validate(fields, mode)
     if (Object.keys(errs).length) { setErrors(errs); return }
     setLoading(true)
-    /*
-     * INTEGRATION POINT
-     * Replace this block with real auth calls:
-     *   login:  POST /api/auth/login  { email, password }
-     *   signup: POST /api/auth/signup { name, email, password }
-     * On success: navigate('/dashboard') or navigate(location.state?.redirect ?? '/')
-     */
-    setTimeout(() => {
-      localStorage.setItem('preptalk_user', JSON.stringify({
-        name: fields.name || fields.email.split('@')[0],
-        email: fields.email,
-        avatar: (fields.name || fields.email)[0].toLowerCase()
-      }))
-      setLoading(false); navigate('/interview/new')
-    }, 650)
+
+    const destination = location.state?.from?.pathname || '/dashboard'
+
+    try {
+      if (isLogin) {
+        const { data, error } = await signInUser({
+          email: fields.email,
+          password: fields.password,
+        })
+
+        if (error) {
+          setServerError(error.message || 'Invalid login credentials. Please try again.')
+          setLoading(false)
+          return
+        }
+
+        setLoading(false)
+        navigate(destination, { replace: true })
+      } else {
+        const { data, error } = await signUpUser({
+          name: fields.name,
+          email: fields.email,
+          password: fields.password,
+        })
+
+        if (error) {
+          setServerError(error.message || 'Registration failed. Please check your details.')
+          setLoading(false)
+          return
+        }
+
+        // Check if email confirmation is required or user is logged in
+        if (data?.session) {
+          setLoading(false)
+          navigate(destination, { replace: true })
+        } else {
+          setLoading(false)
+          setSuccessMsg('Account created! Please check your email to verify your account or log in.')
+          setTimeout(() => {
+            onSwitch()
+          }, 2500)
+        }
+      }
+    } catch (err) {
+      console.error('[AuthForm] Authentication exception:', err)
+      setServerError(err.message || 'An unexpected error occurred. Please try again.')
+      setLoading(false)
+    }
   }
 
   /* ── Google ──────────────────────────────────────────────── */
   const handleGoogle = () => {
-    /*
-     * INTEGRATION POINT — connect Google OAuth here.
-     * e.g. signInWithPopup(auth, googleProvider)
-     */
-    navigate('/interview/new')
+    navigate('/auth/google', { state: { from: location.state?.from } })
   }
 
   /* ── Forgot password ─────────────────────────────────────── */
-  const handleForgot = (e) => {
+  const handleForgot = async (e) => {
     e.preventDefault()
-    setForgotMsg(true)
+    setServerError('')
+    setSuccessMsg('')
+
+    if (!fields.email || !isValidEmail(fields.email)) {
+      setErrors(err => ({ ...err, email: 'Enter your email above first to reset password.' }))
+      return
+    }
+
+    try {
+      const res = await resetPasswordForEmail(fields.email)
+      if (res?.error) {
+        setServerError(res.error.message || 'Failed to send password recovery email.')
+      } else {
+        setSuccessMsg(res?.message || 'Password reset link sent to your email!')
+      }
+    } catch (err) {
+      setServerError(err.message || 'Could not send recovery link.')
+    }
   }
 
   return (
@@ -175,6 +233,44 @@ export default function AuthForm({ mode, onSwitch }) {
           ? 'Pick up where your practice left off.'
           : 'Build the habit before the interview demands it.'}
       </p>
+
+      {/* Server Error Alert Banner */}
+      {serverError && (
+        <div
+          role="alert"
+          style={{
+            background: '#fef2f2',
+            border: '1px solid #fecaca',
+            color: '#b91c1c',
+            borderRadius: '10px',
+            padding: '10px 14px',
+            fontSize: '13px',
+            lineHeight: '1.4',
+            marginBottom: '16px',
+          }}
+        >
+          {serverError}
+        </div>
+      )}
+
+      {/* Success Notification Banner */}
+      {successMsg && (
+        <div
+          role="status"
+          style={{
+            background: '#f0fdf4',
+            border: '1px solid #bbf7d0',
+            color: '#15803d',
+            borderRadius: '10px',
+            padding: '10px 14px',
+            fontSize: '13px',
+            lineHeight: '1.4',
+            marginBottom: '16px',
+          }}
+        >
+          {successMsg}
+        </div>
+      )}
 
       <form
         className="auth-form"
@@ -230,13 +326,6 @@ export default function AuthForm({ mode, onSwitch }) {
             </button>
           )}
         />
-
-        {/* Forgot password notice */}
-        {forgotMsg && isLogin && (
-          <p className="auth-forgot-notice" role="status">
-            Password recovery will be available soon.
-          </p>
-        )}
 
         {/* Confirm password — signup only */}
         {!isLogin && (
@@ -294,7 +383,7 @@ export default function AuthForm({ mode, onSwitch }) {
         {/* Terms — signup only */}
         {!isLogin && (
           <p className="auth-legal">
-            By creating an account, you agree to PrepTalk's{' '}
+            By creating an account, you agree to Parisamvad's{' '}
             <button type="button">Terms</button>
             {' '}and{' '}
             <button type="button">Privacy Policy</button>.

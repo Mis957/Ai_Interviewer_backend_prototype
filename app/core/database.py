@@ -123,23 +123,32 @@ def get_active_engine():
             )
         ):
             _last_sync_attempt = now
+            offline_is_available = False
             try:
-                _sync_local_data_to_primary(_offline_engine, _primary_engine)
-            except (SQLAlchemyError, RuntimeError) as sync_error:
-                _last_sync_error = _safe_database_error(sync_error)
-                logger.warning(
-                    "Could not sync local Supabase data to the hosted database (%s); "
-                    "the local data is retained and synchronization will retry. "
-                    "New database requests will use the hosted database.",
-                    _last_sync_error,
-                )
-            else:
-                _last_sync_error = None
-                _last_sync_succeeded_at = datetime.now(timezone.utc).isoformat()
-                logger.info(
-                    "Local Supabase data synchronization to the hosted database "
-                    "completed; local records were retained."
-                )
+                _check_connection(_offline_engine)
+                offline_is_available = True
+            except SQLAlchemyError:
+                # Local offline Supabase is not running; skip sync gracefully
+                pass
+
+            if offline_is_available:
+                try:
+                    _sync_local_data_to_primary(_offline_engine, _primary_engine)
+                except (SQLAlchemyError, RuntimeError) as sync_error:
+                    _last_sync_error = _safe_database_error(sync_error)
+                    logger.warning(
+                        "Could not sync local Supabase data to the hosted database (%s); "
+                        "the local data is retained and synchronization will retry. "
+                        "New database requests will use the hosted database.",
+                        _last_sync_error,
+                    )
+                else:
+                    _last_sync_error = None
+                    _last_sync_succeeded_at = datetime.now(timezone.utc).isoformat()
+                    logger.info(
+                        "Local Supabase data synchronization to the hosted database "
+                        "completed; local records were retained."
+                    )
 
         return _primary_engine
 
