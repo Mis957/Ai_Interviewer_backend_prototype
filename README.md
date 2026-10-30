@@ -296,4 +296,4 @@ The interview practice session concludes based on the following criteria:
 1. **Manual Termination**: Candidate clicks **"END SESSION"** button at any time to conclude the interview and view their evaluation report.
 2. **Timer Expiration**: Session countdown timer reaches `00:00`.
    - Candidate can choose **"End Interview & Get Report"** to conclude the session.
-   - *Alternatively, the candidate can choose to extend time by +5, +10, or +15 mins to continue practicing.*
+   - *Alternatively, the candidate can choose to extend time by +5, +10, or +15 mins to continue practicing.*
