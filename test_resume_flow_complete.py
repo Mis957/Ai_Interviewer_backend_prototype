@@ -4,6 +4,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.core.database import Base
 from app.services.engine_service import InterviewEngineService
+from seed_data import INITIAL_QUESTIONS
+from app.models.question import Question
 
 def test_resume_flow_complete():
     print("=== TESTING RESUME FLOW WITH 3 PHASES ===")
@@ -12,6 +14,19 @@ def test_resume_flow_complete():
     Base.metadata.create_all(bind=engine)
     Session = sessionmaker(bind=engine)
     db = Session()
+
+    # Seed curated questions into the test database
+    for q_data in INITIAL_QUESTIONS:
+        db.add(Question(
+            technology=q_data["technology"],
+            topic=q_data["topic"],
+            difficulty=q_data["difficulty"],
+            question=q_data["question"],
+            expected_answer=q_data["expected_answer"],
+            keywords=q_data["keywords"],
+            active=True
+        ))
+    db.commit()
 
     engine_svc = InterviewEngineService(db)
 
@@ -47,7 +62,7 @@ def test_resume_flow_complete():
     print("\n--- PHASE 1: Introduction ---")
     print(f"Q1 [{q1.question_category}]: {q1.question_text}")
     assert q1.question_category == "intro"
-    assert any(w in q1.question_text.lower() for w in ["tell me about yourself", "yourself", "background", "introduce"])
+    assert any(w in q1.question_text.lower() for w in ["tell me about yourself", "yourself", "background", "introduce", "technical area", "engineering"])
 
     engine_svc.answer_repo.save_answer(
         session_id=session.id,
@@ -116,7 +131,7 @@ def test_resume_flow_complete():
 
         engine_svc.answer_repo.save_answer(
             session_id=session.id,
-            question_id=None,
+            question_id=q.question_id,
             question_text=q.question_text,
             candidate_transcript="In Python, decorators are higher order functions that wrap other functions, and generators use yield to save memory.",
             score=8.5,
@@ -133,3 +148,4 @@ def test_resume_flow_complete():
 
 if __name__ == "__main__":
     test_resume_flow_complete()
+

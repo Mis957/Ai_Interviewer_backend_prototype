@@ -1,3 +1,4 @@
+import re
 from typing import Tuple, Optional, List
 from sqlalchemy.orm import Session
 from app.repositories.question_repo import QuestionRepository, GeneratedQuestionRepository
@@ -107,7 +108,8 @@ class QuestionSelectionService:
             db_question = self.question_repo.find_matching_question(
                 technology=technology,
                 difficulty=difficulty,
-                excluded_ids=asked_q_ids
+                excluded_ids=asked_q_ids,
+                excluded_texts=asked_topics
             )
             if db_question:
                 return NextQuestionPayload(
@@ -152,22 +154,72 @@ class QuestionSelectionService:
 
         projects = resume_data.get("projects") or []
         skills = resume_data.get("skills") or []
-        primary_tech = resume_data.get("primary_technology", "Python")
+        primary_tech = resume_data.get("primary_technology")
 
-        # Include project stacks as well as listed skills so every resume technology
-        # can be selected during the technical phase.
-        ordered_skills = []
+        # Canonical programming languages prioritized for core conceptual testing
+        PROGRAMMING_LANGUAGES = {
+            "java": "Java",
+            "python": "Python",
+            "c++": "C++",
+            "cpp": "C++",
+            "c#": "C#",
+            "csharp": "C#",
+            "c": "C",
+            "javascript": "JavaScript",
+            "typescript": "TypeScript",
+            "js": "JavaScript",
+            "ts": "TypeScript",
+            "go": "Go",
+            "golang": "Go",
+            "rust": "Rust",
+            "php": "PHP",
+            "ruby": "Ruby",
+            "kotlin": "Kotlin",
+            "swift": "Swift",
+            "scala": "Scala",
+            "sql": "SQL",
+            "postgresql": "SQL",
+            "postgres": "SQL",
+            "mysql": "SQL",
+        }
+
+        def get_canonical_language(val: str) -> Optional[str]:
+            if not isinstance(val, str):
+                return None
+            norm = val.strip().casefold()
+            if norm in PROGRAMMING_LANGUAGES:
+                return PROGRAMMING_LANGUAGES[norm]
+            tokens = re.findall(r'[a-zA-Z\+\#]+', norm)
+            for t in tokens:
+                if t in PROGRAMMING_LANGUAGES:
+                    if t == "java" and "javascript" in norm:
+                        continue
+                    return PROGRAMMING_LANGUAGES[t]
+            return None
+
+        # Prioritize programming languages mentioned in the resume over tools/frameworks
+        language_skills = []
+        other_skills = []
 
         def add_technology(value):
             if not isinstance(value, str):
                 return
-            technology = value.strip()
-            if technology and technology.casefold() not in {
-                existing.casefold() for existing in ordered_skills
-            }:
-                ordered_skills.append(technology)
+            tech_clean = value.strip()
+            if not tech_clean:
+                return
+            lang = get_canonical_language(tech_clean)
+            if lang:
+                if lang.casefold() not in {s.casefold() for s in language_skills}:
+                    language_skills.append(lang)
+            else:
+                if (
+                    tech_clean.casefold() not in {s.casefold() for s in other_skills}
+                    and tech_clean.casefold() not in {s.casefold() for s in language_skills}
+                ):
+                    other_skills.append(tech_clean)
 
-        add_technology(primary_tech)
+        if primary_tech:
+            add_technology(primary_tech)
         if isinstance(skills, str):
             skills = [skills]
         for skill in skills:
@@ -181,18 +233,34 @@ class QuestionSelectionService:
             for technology in project_stack:
                 add_technology(technology)
 
+        # If no programming language was found in skills/stacks, scan raw_text if present
+        if not language_skills and resume_data.get("raw_text"):
+            raw_text = str(resume_data.get("raw_text", ""))
+            for lang_key in ["java", "python", "c++", "cpp", "c#", "javascript", "typescript", "go", "rust", "php", "sql"]:
+                if re.search(r'\b' + re.escape(lang_key) + r'\b', raw_text, re.IGNORECASE):
+                    canonical = PROGRAMMING_LANGUAGES.get(lang_key, lang_key.title())
+                    if canonical.casefold() not in {s.casefold() for s in language_skills}:
+                        language_skills.append(canonical)
+
+        # Programming languages come FIRST (Phase 3 begins with core language questions),
+        # followed by project technologies and frameworks
+        ordered_skills = language_skills + other_skills
         if not ordered_skills:
-            ordered_skills = ["Python"]
+            resume_str = str(resume_data).lower()
+            if "java" in resume_str and "javascript" not in resume_str:
+                ordered_skills = ["Java"]
+            else:
+                ordered_skills = ["Python"]
 
         # Calculate project questions budget:
-        # User requirement: maximum 5 questions such that all projects are covered and all questions related to them
+        # User requirement: At most 5 questions related to the projects.
         num_projects = len(projects)
         if num_projects == 0:
             total_project_questions = 0
         elif num_projects == 1:
-            total_project_questions = 3  # Thorough coverage of the project: overview, hurdle, and trade-offs
+            total_project_questions = 3  # Thorough coverage of the single project (overview, hurdle, tradeoffs)
         else:
-            total_project_questions = min(5, max(num_projects, 5))  # Exactly 5 questions (max 5) covering all projects
+            total_project_questions = min(5, max(num_projects, 5))  # Exactly up to 5 questions (at most 5) covering projects
 
         # 3-Phase Flow State Assignment
         if q_count == 0:
@@ -264,22 +332,34 @@ class QuestionSelectionService:
         # Step 2: Database Fallback if LLM is unavailable
         if next_category != "intro":
             asked_q_ids = [a.question_id for a in session_answers if a.question_id]
-            primary_tech = target_technology or resume_data.get("primary_technology", "Resume-Based")
-            db_question = self.question_repo.find_matching_question(
-                technology=primary_tech,
-                difficulty=next_difficulty,
-                excluded_ids=asked_q_ids
-            )
-            if db_question:
-                return NextQuestionPayload(
-                    question_id=db_question.id,
-                    generated_question_id=None,
-                    technology=db_question.technology,
-                    topic=db_question.topic,
-                    difficulty=db_question.difficulty,
-                    question_text=db_question.question,
-                    is_llm_generated=False,
-                    question_category=next_category
+            candidate_techs = []
+            if target_technology:
+                candidate_techs.append(target_technology)
+            if primary_tech and primary_tech not in candidate_techs:
+                candidate_techs.append(primary_tech)
+            for skill in ordered_skills:
+                if skill not in candidate_techs:
+                    candidate_techs.append(skill)
+            if "Resume-Based" not in candidate_techs:
+                candidate_techs.append("Resume-Based")
+
+            for tech_candidate in candidate_techs:
+                db_question = self.question_repo.find_matching_question(
+                    technology=tech_candidate,
+                    difficulty=next_difficulty,
+                    excluded_ids=asked_q_ids,
+                    excluded_texts=asked_topics
                 )
+                if db_question:
+                    return NextQuestionPayload(
+                        question_id=db_question.id,
+                        generated_question_id=None,
+                        technology=db_question.technology,
+                        topic=db_question.topic,
+                        difficulty=db_question.difficulty,
+                        question_text=db_question.question,
+                        is_llm_generated=False,
+                        question_category=next_category
+                    )
 
         raise RuntimeError("Failed to generate or retrieve resume interview question.")

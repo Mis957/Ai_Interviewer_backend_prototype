@@ -27,6 +27,7 @@ _offline_engine = (
     else None
 )
 _active_engine = _primary_engine
+_sqlite_engine = _create_engine("sqlite:///./interview_prototype.db")
 _using_offline_database = False
 _engine_lock = Lock()
 _last_sync_attempt = 0.0
@@ -93,11 +94,12 @@ def get_active_engine():
 
             try:
                 _check_connection(_offline_engine)
-            except SQLAlchemyError as offline_error:
-                raise RuntimeError(
-                    "The primary database is unavailable and local Supabase could "
-                    "not be reached. Start the local Supabase stack and try again."
-                ) from offline_error
+            except SQLAlchemyError:
+                if not _using_offline_database or _active_engine != _sqlite_engine:
+                    initialize_database_schema(_sqlite_engine)
+                    _active_engine = _sqlite_engine
+                    _using_offline_database = True
+                return _sqlite_engine
 
             if not _using_offline_database:
                 initialize_database_schema(_offline_engine)

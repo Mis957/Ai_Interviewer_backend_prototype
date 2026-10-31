@@ -387,6 +387,17 @@ export default function InterviewLive() {
   const micStreamRef = useRef(null)   // getUserMedia stream
   const recordingTimerRef = useRef(null)   // seconds counter
   const isSubmittingRef = useRef(false)  // duplicate-submit guard
+  const activeSubmissionPromiseRef = useRef(null)  // tracks in-flight submitAnswer promise
+  const endRequestedRef = useRef(false)            // candidate requested ending the session
+  const isEndingRef = useRef(false)                // currently ending and generating report
+  const showTimerExpiredModalRef = useRef(false)   // timer expired modal currently visible
+  const pendingNextQuestionRef = useRef(null)      // question received while timer expired modal is open
+
+  // Track latest interviewState in a ref for callbacks/effects without causing dependency cycles
+  const interviewStateRef = useRef(interviewState)
+  useEffect(() => {
+    interviewStateRef.current = interviewState
+  }, [interviewState])
 
   // ── Helper: stop microphone stream tracks ────────────────────────
   const stopMicStream = useCallback(() => {
@@ -412,13 +423,19 @@ export default function InterviewLive() {
       window.speechSynthesis.cancel()
     }
 
+    if (endRequestedRef.current || isEndingRef.current || interviewStateRef.current === INTERVIEW_STATES.COMPLETED) {
+      return
+    }
+
     const audio = audioRef.current
     if (!currentQuestion || !audio) return
 
     const audioUrl = getAudioUrl(currentQuestion.audio_url)
     if (!audioUrl) {
-      setInterviewState(INTERVIEW_STATES.LISTENING)
-      setTimerRunning(true)
+      if (!endRequestedRef.current && !isEndingRef.current) {
+        setInterviewState(INTERVIEW_STATES.LISTENING)
+        setTimerRunning(true)
+      }
       return
     }
 
@@ -429,20 +446,20 @@ export default function InterviewLive() {
     let isCurrent = true
 
     const handlePlay = () => {
-      if (isCurrent) {
+      if (isCurrent && !endRequestedRef.current && !isEndingRef.current) {
         setInterviewState(INTERVIEW_STATES.AI_SPEAKING)
         setTimerRunning(true)
       }
     }
 
     const handleEnded = () => {
-      if (isCurrent) {
+      if (isCurrent && !endRequestedRef.current && !isEndingRef.current) {
         setInterviewState(INTERVIEW_STATES.LISTENING)
       }
     }
 
     const handleError = () => {
-      if (isCurrent) {
+      if (isCurrent && !endRequestedRef.current && !isEndingRef.current) {
         setInterviewState(INTERVIEW_STATES.LISTENING)
         setTimerRunning(true)
       }
@@ -462,7 +479,7 @@ export default function InterviewLive() {
       playPromise.catch((err) => {
         // Autoplay may be restricted by the browser until candidate interacts
         console.info('[InterviewLive] Autoplay waiting for candidate interaction:', err.message)
-        if (isCurrent) {
+        if (isCurrent && !endRequestedRef.current && !isEndingRef.current) {
           setInterviewState(INTERVIEW_STATES.LISTENING)
           setTimerRunning(true)
         }
@@ -482,6 +499,7 @@ export default function InterviewLive() {
   // the candidate's first click anywhere on the page smoothly starts the interviewer audio.
   useEffect(() => {
     const playOnFirstInteraction = () => {
+      if (endRequestedRef.current || isEndingRef.current) return
       const audio = audioRef.current
       if (audio && audio.paused && !audio.ended && audio.src && audio.currentTime === 0) {
         audio.play().catch(() => {})
@@ -511,6 +529,7 @@ export default function InterviewLive() {
 
   // ── Replay TTS audio — triggered if candidate clicks AI orb ──────
   const handleReplayAudio = useCallback(() => {
+    if (endRequestedRef.current || isEndingRef.current) return
     const audio = audioRef.current
     const audioUrl = getAudioUrl(currentQuestion?.audio_url)
 
@@ -528,7 +547,9 @@ export default function InterviewLive() {
 
   // ── Handle when timer expires ────────────────────────────────────
   const handleTimerExpired = useCallback(() => {
+    if (endRequestedRef.current || isEndingRef.current || interviewStateRef.current === INTERVIEW_STATES.COMPLETED) return
     setTimerRunning(false)
+    showTimerExpiredModalRef.current = true
     setShowTimerExpiredModal(true)
   }, [])
 
@@ -536,18 +557,38 @@ export default function InterviewLive() {
   const handleExtendSession = useCallback((minutes) => {
     const extra = (minutes || 5) * 60
     setAddedSeconds(prev => prev + extra)
+    showTimerExpiredModalRef.current = false
     setShowTimerExpiredModal(false)
-    setTimerRunning(true)
+
+    // If next question arrived while timer-expired modal was open, activate it now
+    if (pendingNextQuestionRef.current) {
+      const nextQ = pendingNextQuestionRef.current
+      pendingNextQuestionRef.current = null
+      setSubmitError(null)
+      setRecordingSeconds(0)
+      setInterviewState(INTERVIEW_STATES.PROCESSING)
+      setCurrentQuestion(nextQ)
+    } else {
+      setTimerRunning(true)
+    }
   }, [])
 
   // ── End session and fetch final report from backend ──────────────
   const handleEndSession = useCallback(async () => {
-    if (isEnding) return
+    if (isEndingRef.current) return
+    isEndingRef.current = true
+    endRequestedRef.current = true
     setIsEnding(true)
     setEndError(null)
 
+    // Clear any queued question
+    pendingNextQuestionRef.current = null
+
     const audio = audioRef.current
-    if (audio) audio.pause()
+    if (audio) {
+      audio.pause()
+      audio.currentTime = 0
+    }
     stopMicStream()
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try { mediaRecorderRef.current.stop() } catch (e) { }
@@ -556,6 +597,17 @@ export default function InterviewLive() {
     setTimerRunning(false)
     setShowEndModal(false)
     setShowTimerExpiredModal(false)
+    showTimerExpiredModalRef.current = false
+
+    // If an answer analysis is currently ongoing, wait for it so the last answer is evaluated and included in report!
+    if (activeSubmissionPromiseRef.current) {
+      console.info('[InterviewLive] Waiting for in-flight answer analysis to complete before finalizing report...')
+      try {
+        await activeSubmissionPromiseRef.current
+      } catch (subErr) {
+        console.warn('[InterviewLive] In-flight answer analysis completed with error, proceeding to generate report:', subErr)
+      }
+    }
 
     try {
       const report = await endInterview(sessionData.session_id)
@@ -566,15 +618,17 @@ export default function InterviewLive() {
       console.error('[InterviewLive] End session failed:', err)
       const detail = err?.response?.data?.detail || err?.message || 'Unable to generate your performance report. Please try again.'
       setEndError(detail)
+      isEndingRef.current = false
+      endRequestedRef.current = false
     } finally {
       setIsEnding(false)
     }
-  }, [isEnding, sessionData?.session_id, stopMicStream])
+  }, [sessionData?.session_id, stopMicStream])
 
   // ── Start recording ──────────────────────────────────────────────
   const handleStartRecording = useCallback(async () => {
-    // Guard: only allow from LISTENING state
-    if (interviewState !== INTERVIEW_STATES.LISTENING) return
+    // Guard: only allow from LISTENING state and not ending
+    if (interviewState !== INTERVIEW_STATES.LISTENING || endRequestedRef.current || isEndingRef.current) return
     // Guard: prevent multiple recorder instances
     if (mediaRecorderRef.current) return
 
@@ -611,6 +665,11 @@ export default function InterviewLive() {
       clearInterval(recordingTimerRef.current)
       stopMicStream()
       mediaRecorderRef.current = null
+
+      if (endRequestedRef.current || isEndingRef.current) {
+        console.info('[InterviewLive] Recorder stopped because interview is ending. Skipping submission.')
+        return
+      }
 
       const actualMime = recordingMimeRef.current || 'audio/webm'
       const blob = new Blob(audioChunksRef.current, { type: actualMime })
@@ -657,22 +716,25 @@ export default function InterviewLive() {
 
   // ── Submit answer to backend ─────────────────────────────────────
   const handleSubmitAnswer = useCallback(async (audioBlob, mimeType) => {
-    // Duplicate-submit guard
-    if (isSubmittingRef.current) return
+    // Duplicate-submit or ending guard
+    if (isSubmittingRef.current || endRequestedRef.current || isEndingRef.current) return
     isSubmittingRef.current = true
 
     // Pause TTS in case it was replaying
     const audio = audioRef.current
     if (audio) { audio.pause() }
 
+    const promise = submitAnswer({
+      sessionId: sessionData.session_id,
+      questionId: currentQuestion?.question_id ?? null,
+      generatedQuestionId: currentQuestion?.generated_question_id ?? null,
+      audioBlob,
+      mimeType,
+    })
+    activeSubmissionPromiseRef.current = promise
+
     try {
-      const response = await submitAnswer({
-        sessionId: sessionData.session_id,
-        questionId: currentQuestion?.question_id ?? null,
-        generatedQuestionId: currentQuestion?.generated_question_id ?? null,
-        audioBlob,
-        mimeType,
-      })
+      const response = await promise
 
       // ── Log adaptive signals for runtime verification ────────────
       console.info('[InterviewLive] Evaluation received:', {
@@ -684,9 +746,26 @@ export default function InterviewLive() {
         next_question_text: response.next_question?.question_text ?? null,
       })
 
-      // ── Session completed ────────────────────────────────────────
+      // If user requested to end session or interview is ending while evaluating:
+      if (endRequestedRef.current || isEndingRef.current) {
+        console.info('[InterviewLive] End session was requested while analyzing; suppressing next question.')
+        return
+      }
+
+      // ── Session completed by backend ─────────────────────────────
       if (response.session_completed) {
         handleEndSession()
+        return
+      }
+
+      // ── If Timer Expired Modal is currently visible to candidate ───
+      // Hold next question until candidate chooses to extend or end
+      if (showTimerExpiredModalRef.current) {
+        console.info('[InterviewLive] Timer expired modal is currently active; queuing next question.')
+        pendingNextQuestionRef.current = response.next_question ?? null
+        if (!response.next_question) {
+          handleEndSession()
+        }
         return
       }
 
@@ -703,10 +782,13 @@ export default function InterviewLive() {
 
     } catch (err) {
       console.error('[InterviewLive] Answer submission failed:', err)
-      const detail = err?.response?.data?.detail || err?.message || 'Submission failed. Please try again.'
-      setSubmitError(detail)
-      setInterviewState(INTERVIEW_STATES.ERROR)
+      if (!endRequestedRef.current && !isEndingRef.current) {
+        const detail = err?.response?.data?.detail || err?.message || 'Submission failed. Please try again.'
+        setSubmitError(detail)
+        setInterviewState(INTERVIEW_STATES.ERROR)
+      }
     } finally {
+      activeSubmissionPromiseRef.current = null
       isSubmittingRef.current = false
     }
   }, [sessionData, currentQuestion, handleEndSession])
@@ -721,6 +803,7 @@ export default function InterviewLive() {
   const handleSaveExit = useCallback(() => {
     if (isSaving) return
     setIsSaving(true)
+    endRequestedRef.current = true
     const audio = audioRef.current
     if (audio) audio.pause()
     stopMicStream()
@@ -794,7 +877,7 @@ export default function InterviewLive() {
           <InterviewerBadge interviewer={VEDANTA_INTERVIEWER} />
           <SessionTimer
             duration={durationSeconds}
-            isRunning={timerRunning && interviewState !== INTERVIEW_STATES.COMPLETED}
+            isRunning={timerRunning && !isEnding && interviewState !== INTERVIEW_STATES.COMPLETED}
             onTimeUp={handleTimerExpired}
           />
         </header>
@@ -802,11 +885,13 @@ export default function InterviewLive() {
         {/* ── Main Stage ──────────────────────────────────────────── */}
         <main className="interview-stage">
           <AIOrb
-            state={interviewState}
+            state={isEnding ? INTERVIEW_STATES.PROCESSING : interviewState}
             audioLevel={0}
             onReplayAudio={
-              interviewState === INTERVIEW_STATES.LISTENING ||
+              !isEnding && (
+                interviewState === INTERVIEW_STATES.LISTENING ||
                 interviewState === INTERVIEW_STATES.AI_SPEAKING
+              )
                 ? handleReplayAudio
                 : undefined
             }
@@ -816,7 +901,9 @@ export default function InterviewLive() {
               <div className="interview-completed-icon" aria-hidden="true">⏳</div>
               <h2 className="interview-completed-title">Generating Report</h2>
               <p className="interview-completed-body">
-                Analyzing your responses and evaluating technical performance…
+                {activeSubmissionPromiseRef.current
+                  ? 'Analyzing your final answer and compiling complete evaluation report…'
+                  : 'Analyzing your responses and evaluating technical performance…'}
               </p>
             </div>
           ) : interviewState === INTERVIEW_STATES.COMPLETED ? (
@@ -837,7 +924,7 @@ export default function InterviewLive() {
         {/* ── Bottom Controls ─────────────────────────────────────── */}
         <footer className="interview-bottom">
           <InterviewStatusIndicator
-            state={interviewState}
+            state={isEnding ? INTERVIEW_STATES.PROCESSING : interviewState}
             interviewerName={VEDANTA_INTERVIEWER.name}
           />
 

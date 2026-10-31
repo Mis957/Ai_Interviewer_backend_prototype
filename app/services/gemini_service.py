@@ -55,6 +55,75 @@ _PYTHON_QUESTION_PROGRESSION = (
     ),
 )
 
+_JAVA_QUESTION_PROGRESSION = (
+    (
+        "oop_fundamentals",
+        "Ask about Object-Oriented Programming (OOP) in Java, such as what OOP is in Java, the core pillars of OOP (Encapsulation, Abstraction, Inheritance, Polymorphism), or how encapsulation and abstraction work with classes and objects. Ask directly without referencing projects.",
+    ),
+    (
+        "classes_and_interfaces",
+        "Ask about classes, abstract classes versus interfaces, inheritance, or the difference between method overloading and method overriding in Java. Ask directly without referencing projects.",
+    ),
+    (
+        "jvm_and_memory",
+        "Ask about Java memory management (Stack vs Heap memory), the Java Virtual Machine (JVM), or how Garbage Collection works. Ask directly without referencing projects.",
+    ),
+    (
+        "collections_framework",
+        "Ask about the Java Collections Framework, such as ArrayList versus LinkedList, or how HashMap works internally with equals() and hashCode(). Ask directly without referencing projects.",
+    ),
+    (
+        "exception_handling_and_features",
+        "Ask about checked versus unchecked exceptions, String immutability, or multithreading and the synchronized keyword in Java. Ask directly without referencing projects.",
+    ),
+)
+
+_CPP_QUESTION_PROGRESSION = (
+    (
+        "oop_and_classes",
+        "Ask about Object-Oriented Programming in C++, such as classes, access specifiers, inheritance, or runtime polymorphism with virtual functions and vtables. Ask directly without referencing projects.",
+    ),
+    (
+        "pointers_and_memory",
+        "Ask about pointers versus references, memory allocation on stack versus heap with new and delete, or memory leak prevention. Ask directly without referencing projects.",
+    ),
+    (
+        "constructors_and_raii",
+        "Ask about RAII (Resource Acquisition Is Initialization), copy versus move constructors, or virtual destructors in C++. Ask directly without referencing projects.",
+    ),
+    (
+        "stl_containers",
+        "Ask about C++ Standard Template Library (STL) containers, such as std::vector vs std::list, or std::map vs std::unordered_map. Ask directly without referencing projects.",
+    ),
+    (
+        "templates_and_modern_features",
+        "Ask about smart pointers (unique_ptr, shared_ptr), templates, or lambda functions in modern C++. Ask directly without referencing projects.",
+    ),
+)
+
+_JAVASCRIPT_QUESTION_PROGRESSION = (
+    (
+        "oop_and_prototypes",
+        "Ask about Object-Oriented Programming and prototypal inheritance in JavaScript, ES6 classes, or how the 'this' keyword works. Ask directly without referencing projects.",
+    ),
+    (
+        "closures_and_scope",
+        "Ask about closures, lexical scope, or the difference between var, let, and const in JavaScript. Ask directly without referencing projects.",
+    ),
+    (
+        "async_and_event_loop",
+        "Ask about the JavaScript event loop, call stack, microtasks versus macrotasks, or Promises versus async/await. Ask directly without referencing projects.",
+    ),
+    (
+        "data_types_and_immutability",
+        "Ask about primitives versus reference types, shallow versus deep copies, or functional array methods (map, filter, reduce). Ask directly without referencing projects.",
+    ),
+    (
+        "typescript_and_modern_features",
+        "Ask about TypeScript interfaces versus types, generics, or module systems (ES modules vs CommonJS). Ask directly without referencing projects.",
+    ),
+)
+
 
 def _question_focus(sequence: int) -> tuple[str, str]:
     return _QUESTION_FOCUSES[sequence % len(_QUESTION_FOCUSES)]
@@ -62,13 +131,22 @@ def _question_focus(sequence: int) -> tuple[str, str]:
 
 def _technology_progression(technology: str, sequence: int) -> tuple[str, str]:
     normalized_technology = technology.casefold()
-    progression = _PYTHON_QUESTION_PROGRESSION if "python" in normalized_technology else (
-        ("foundation", f"Ask about a fundamental building block or basic usage of {technology}, grounded in a simple example."),
-        ("core_model", f"Ask about a core programming, data, or object model concept relevant to {technology}."),
-        ("common_feature", f"Ask about a commonly used feature or mechanism in {technology} and when it is useful."),
-        ("practical_debugging", f"Present a realistic bug or unexpected behavior involving {technology} and ask how to investigate it."),
-        ("advanced_application", f"Ask about one advanced mechanism, performance concern, or reliability scenario involving {technology}."),
-    )
+    if "java" in normalized_technology and "javascript" not in normalized_technology:
+        progression = _JAVA_QUESTION_PROGRESSION
+    elif "python" in normalized_technology:
+        progression = _PYTHON_QUESTION_PROGRESSION
+    elif "javascript" in normalized_technology or "typescript" in normalized_technology or normalized_technology in ("js", "ts"):
+        progression = _JAVASCRIPT_QUESTION_PROGRESSION
+    elif "c++" in normalized_technology or "cpp" in normalized_technology:
+        progression = _CPP_QUESTION_PROGRESSION
+    else:
+        progression = (
+            ("foundation", f"Ask about a fundamental building block or basic usage of {technology}, grounded in a simple example."),
+            ("core_model", f"Ask about a core programming, data, or object model concept relevant to {technology}."),
+            ("common_feature", f"Ask about a commonly used feature or mechanism in {technology} and when it is useful."),
+            ("practical_debugging", f"Present a realistic bug or unexpected behavior involving {technology} and ask how to investigate it."),
+            ("advanced_application", f"Ask about one advanced mechanism, performance concern, or reliability scenario involving {technology}."),
+        )
     return progression[min(max(sequence, 0), len(progression) - 1)]
 
 
@@ -566,33 +644,9 @@ Return STRICTLY in JSON format with NO markdown wrapping:
                 "keywords": [technology, "project", "technical-decision"]
             }
 
-        # Stage 3 Technical concepts fallback bank
-        t_low = technology.lower()
-        existing_str = " ".join(existing_topics or []).lower()
-        if "python" in t_low:
-            py_bank = [
-                ("Functions & Argument Passing", "Could you explain how argument passing works in Python functions, specifically regarding mutable versus immutable default arguments?"),
-                ("Decorators in Python", "How do decorators work under the hood in Python, and how would you implement a custom decorator that accepts arguments?"),
-                ("Generators & Yield", "What is the difference between a generator and a standard function in Python, and how does the yield keyword optimize memory usage?"),
-                ("GIL & Concurrency", "How does the Global Interpreter Lock (GIL) impact multithreading in Python, and when would you choose multiprocessing instead?"),
-                ("Context Managers", "How do context managers work in Python using the 'with' statement, and what methods are required to implement one from scratch?"),
-                ("OOP & Dunder Methods", "What is the difference between '__new__' and '__init__' in Python, and when would you override '__new__'?")
-            ]
-            for t_name, q_txt in py_bank:
-                if t_name.lower() not in existing_str and q_txt[:30].lower() not in existing_str:
-                    return {
-                        "topic": t_name,
-                        "question": q_txt,
-                        "expected_answer": f"Detailed technical explanation of {t_name} in Python.",
-                        "keywords": ["Python", t_name.lower()]
-                    }
-
-        return {
-            "topic": f"{technology} Core Concepts",
-            "question": f"What is one core concept in {technology} that you consider essential?",
-            "expected_answer": f"A clear explanation of one core concept in {technology}.",
-            "keywords": [technology, "core-concept", difficulty.lower()]
-        }
+        # Stage 3 Technical concepts: return None to allow SelectionService to retrieve
+        # curated questions directly from the database (QuestionRepository).
+        return None
 
     def generate_resume_question(
         self,
@@ -713,6 +767,77 @@ Return STRICTLY in JSON format with NO markdown wrapping:
                     "a reliability failure and how to contain it",
                     "an advanced mechanism and its trade-off",
                 ),
+                "oop_fundamentals": (
+                    "what Object-Oriented Programming (OOP) is in Java and why it is the core foundation",
+                    "the core pillars of OOP (Encapsulation, Abstraction, Inheritance, Polymorphism)",
+                    "how encapsulation protects object state through access modifiers and methods",
+                    "the difference between compile-time and runtime polymorphism",
+                    "how abstraction hides implementation complexity",
+                ),
+                "classes_and_interfaces": (
+                    "the differences between an abstract class and an interface",
+                    "why multiple inheritance with classes is restricted and how interfaces solve it",
+                    "the difference between method overloading and method overriding",
+                ),
+                "jvm_and_memory": (
+                    "how memory is divided between the Stack and the Heap",
+                    "how Garbage Collection identifies and reclaims unreachable objects in the JVM",
+                    "the respective roles of JDK, JRE, and JVM in execution",
+                ),
+                "collections_framework": (
+                    "the trade-offs between ArrayList and LinkedList",
+                    "how HashMap works internally and why equals and hashCode must be consistent",
+                    "the difference between HashMap and ConcurrentHashMap in multi-threaded environments",
+                ),
+                "exception_handling_and_features": (
+                    "the difference between checked and unchecked exceptions and how they are handled",
+                    "why Strings are immutable and when to use StringBuilder",
+                    "how multithreading and the synchronized keyword prevent race conditions",
+                ),
+                "oop_and_classes": (
+                    "classes, access specifiers, and object encapsulation in C++",
+                    "runtime polymorphism with virtual functions and vtables",
+                    "the difference between public, protected, and private inheritance",
+                ),
+                "pointers_and_memory": (
+                    "pointers versus references and memory addressing",
+                    "allocating memory on the stack versus heap with new and delete",
+                    "how memory leaks occur and how to prevent them",
+                ),
+                "constructors_and_raii": (
+                    "RAII (Resource Acquisition Is Initialization) in C++",
+                    "copy versus move semantics and constructors",
+                    "the role of a virtual destructor in a base class",
+                ),
+                "stl_containers": (
+                    "the difference between std::vector and std::list in C++",
+                    "how std::map differs from std::unordered_map",
+                ),
+                "templates_and_modern_features": (
+                    "smart pointers like unique_ptr and shared_ptr",
+                    "C++ templates and compile-time type safety",
+                ),
+                "oop_and_prototypes": (
+                    "how Object-Oriented Programming works in JavaScript through prototypal inheritance",
+                    "how ES6 classes differ from traditional prototype-based inheritance",
+                    "how the 'this' keyword works and how arrow functions handle it",
+                ),
+                "closures_and_scope": (
+                    "closures and practical use cases for maintaining state",
+                    "the difference between var, let, and const in terms of scope and hoisting",
+                ),
+                "async_and_event_loop": (
+                    "how the JavaScript event loop coordinates call stack, microtasks, and macrotasks",
+                    "Promises versus async/await for asynchronous programming",
+                ),
+                "data_types_and_immutability": (
+                    "primitives versus reference types in JavaScript",
+                    "functional array methods like map, filter, and reduce",
+                ),
+                "typescript_and_modern_features": (
+                    "TypeScript interfaces versus type aliases",
+                    "generics and static type safety in TypeScript",
+                ),
             }
             variation_focus = secrets.choice(technology_variations.get(
                 progression_stage,
@@ -806,8 +931,13 @@ Return STRICTLY in JSON format with NO markdown wrapping:
                 _technology_progression(target_tech, question_sequence)
             )
             category_instructions = (
-                f"STAGE 3 TECH-STACK QUESTION - {progression_stage.upper()}: "
-                f"The candidate lists '{target_tech}' as a skill. {progression_guidance} "
+                f"STAGE 3 CORE PROGRAMMING LANGUAGE CONCEPTS - {progression_stage.upper()}: "
+                f"The candidate lists '{target_tech}' in their resume. {progression_guidance} "
+                f"CRITICAL REQUIREMENT: This is a pure conceptual language interview question about '{target_tech}' itself. "
+                f"DO NOT ask about or reference any candidate projects or project implementations. "
+                f"Focus directly on core {target_tech} concepts, Object-Oriented Programming (OOP) principles "
+                f"(such as what is OOP, the pillars of OOP: encapsulation, inheritance, polymorphism, abstraction), "
+                f"core language mechanics, memory management, syntax, or standard libraries. "
                 f"Vary this run by focusing specifically on {variation_focus}; {question_approach}. "
                 f"This is question {question_sequence + 1} for this technology. "
                 f"Choose one specific concept or realistic situation and do not repeat these topics: {avoid_str}. "
@@ -818,11 +948,16 @@ Return STRICTLY in JSON format with NO markdown wrapping:
         else:
             category_instructions = f"Ask an on-point, precise interview question for {category} at {difficulty} level. Strictly 1-2 concise sentences."
 
+        if category in ("technology", "skill"):
+            project_context_str = "None (Stage 3 is strictly core programming language & technical fundamentals; DO NOT ask about candidate projects)"
+        else:
+            project_context_str = proj_str
+
         prompt = f"""You are a senior technical interviewer conducting a live voice interview for candidate '{candidate_name}' based on their uploaded resume.
 
 Candidate Profile:
 - Skills: {skills_str}
-- Projects: {proj_str}
+- Projects: {project_context_str}
 - Category: {category}
 - Difficulty: {difficulty}
 - Latest answer score: {f"{last_score:.1f}/10" if last_score is not None else "No previous answer"}
@@ -832,7 +967,7 @@ Candidate Profile:
 
 CRITICAL RULES FOR GENERATING THE QUESTION:
 1. SPOKEN INTERVIEWER TONE: Speak directly to the candidate in natural conversational English suitable for text-to-speech. Avoid canned openings and over-formal phrasing.
-2. SPECIFIC WITH CONTEXT: Ground the question in the named project, technology, or a plausible scenario. Ask about one concrete concept, decision, or challenge, not broad architecture by default.
+2. STAGE-SPECIFIC FOCUS: If category is 'project', ground the question in the named project, implementation details, and engineering trade-offs. If category is 'technology' or 'skill', focus DIRECTLY on core language concepts, OOP principles, syntax, memory/runtime mechanics, and standard libraries. NEVER refer to or ask about projects during the technology stage.
 3. ONE FOCUSED ASK: Ask one direct question, not a checklist or multiple requests joined with "and". Keep it to 1-2 short sentences and end with a question mark.
 4. CONVERSATIONAL TECHNICAL DISCUSSION: Ask about concepts, mechanisms, design decisions, debugging, or experience that can be explained verbally. Never ask the candidate to write code or solve a coding puzzle.
 5. ACCURATE TO STAGE DIRECTIVE: Follow the stage directive and do not invent candidate or project details that are absent from the resume.
@@ -950,152 +1085,10 @@ Return STRICTLY in JSON format:
                 "keywords": ["problem-solving", "deadlines", "resilience"]
             }
         else:
-            # category in ("technology", "skill")
-            target_tech = target_technology or resume_data.get("primary_technology") or (skills_str.split(",")[0].strip() if skills_str else "Python")
-            t_low = target_tech.lower()
-            existing_str = " ".join(existing_topics or []).lower()
-
-            if "python" in t_low:
-                python_bank = [
-                    ("Python Fundamentals", [
-                        "In Python, how does mutability affect what happens when two variables refer to the same list?",
-                        "Why can a mutable default argument cause surprising behavior across Python function calls?",
-                        "How does Python determine whether a variable is local or global inside a function?",
-                    ]),
-                    ("Object-Oriented Programming", [
-                        "In Python, what is the difference between a class and an instance?",
-                        "When would composition be a better choice than inheritance in Python?",
-                        "How does an instance get access to methods defined on its Python class?",
-                    ]),
-                    ("Decorators in Python", [
-                        "In Python, what does a decorator do to a function, and when might you use one?",
-                        "How can a Python decorator add behavior without changing the decorated function's body?",
-                        "What role does a wrapper function play in a Python decorator?",
-                    ]),
-                    ("Generators & Yield", [
-                        "How does the yield keyword let a Python function produce values lazily?",
-                        "When is a Python generator more memory-efficient than building a list?",
-                    ]),
-                    ("GIL & Concurrency", [
-                        "When might the Global Interpreter Lock affect a CPU-bound Python application?",
-                        "Why might adding Python threads fail to speed up CPU-heavy work?",
-                    ]),
-                    ("Context Managers", [
-                        "What problem does a context manager solve when working with files in Python?",
-                        "How does a Python with statement help ensure a resource is cleaned up?",
-                    ]),
-                    ("Python Memory Management", [
-                        "How does Python reclaim memory when objects are no longer in use?",
-                        "Why does Python need garbage collection in addition to reference counting?",
-                    ])
-                ]
-                if last_score is not None and last_score < 5.0:
-                    bank_start = 0
-                else:
-                    bank_start = min(question_sequence, len(python_bank) - 1)
-                ordered_bank = python_bank[bank_start:] + python_bank[:bank_start]
-                for topic_name, question_options in ordered_bank:
-                    unused_questions = [
-                        question for question in question_options
-                        if question.casefold() not in existing_str
-                    ]
-                    if unused_questions:
-                        q_text = secrets.choice(unused_questions)
-                        return {
-                            "topic": topic_name,
-                            "category": "technology",
-                            "question": q_text,
-                            "expected_answer": f"Comprehensive explanation of {topic_name} in Python.",
-                            "keywords": ["Python", topic_name.lower()]
-                        }
-                return {
-                    "topic": "Python Memory Management",
-                    "category": "technology",
-                    "question": "How does Python handle memory management and garbage collection with reference counting and cyclic references?",
-                    "expected_answer": "Explanation of reference counting, garbage collection thresholds, and cyclic references in Python.",
-                    "keywords": ["Python", "memory", "garbage-collection"]
-                }
-            elif any(
-                database_term in t_low
-                for database_term in ("sql", "dbms", "database", "postgres", "mysql", "sqlite", "mariadb")
-            ):
-                sql_bank = [
-                    ("SQL Fundamentals", [
-                        "How would you use a WHERE clause to filter rows in a SQL query?",
-                        "What is the difference between filtering rows with WHERE and filtering groups with HAVING?",
-                    ]),
-                    ("SQL Joins", [
-                        "When would you use a LEFT JOIN instead of an INNER JOIN?",
-                        "Why can a join produce more rows than either of its input tables?",
-                    ]),
-                    ("Database Indexing", [
-                        "How does an index help a SQL query that filters a large table?",
-                        "What is one trade-off of adding an index to a frequently updated table?",
-                    ]),
-                    ("Transactions", [
-                        "What problem do transactions solve when an operation updates several related rows?",
-                        "Why should related database updates succeed or fail as one transaction?",
-                    ]),
-                    ("Transaction Isolation", [
-                        "How can transaction isolation prevent a query from reading another transaction's incomplete changes?",
-                        "What kind of inconsistent result can occur when concurrent transactions are not isolated?",
-                    ])
-                ]
-                bank_start = secrets.randbelow(len(sql_bank))
-                ordered_sql_bank = sql_bank[bank_start:] + sql_bank[:bank_start]
-                for topic_name, question_options in ordered_sql_bank:
-                    unused_questions = [
-                        question for question in question_options
-                        if question.casefold() not in existing_str
-                    ]
-                    if unused_questions:
-                        q_text = secrets.choice(unused_questions)
-                        return {
-                            "topic": topic_name,
-                            "category": "technology",
-                            "question": q_text,
-                            "expected_answer": f"Technical breakdown of {topic_name}.",
-                            "keywords": [target_tech, topic_name.lower()]
-                        }
-            progression_stage, _ = _technology_progression(target_tech, question_sequence)
-            progression_difficulty = difficulty
-            fallback_questions = (
-                (
-                    f"What problem does {target_tech} solve in an application?",
-                    f"Where would you choose {target_tech} over a simpler alternative?",
-                    f"What role can {target_tech} play in a typical application?",
-                ),
-                (
-                    f"What is one important building block of {target_tech}, and what does it do?",
-                    f"How does {target_tech} represent or process its core data?",
-                    f"What basic operation would you expect any user of {target_tech} to understand?",
-                ),
-                (
-                    f"How would you use a common {target_tech} feature in a typical task?",
-                    f"What kind of task is a built-in {target_tech} feature especially useful for?",
-                    f"When would you reach for a standard {target_tech} mechanism rather than custom code?",
-                ),
-                (
-                    f"If something behaved unexpectedly in {target_tech}, what would you check first?",
-                    f"What evidence would help you trace a bug in a {target_tech} application?",
-                    f"How would you narrow down which part of a {target_tech} workflow caused a failure?",
-                ),
-                (
-                    f"What advanced behavior or limitation of {target_tech} matters in a high-load application?",
-                    f"What {target_tech} performance bottleneck would you measure before trying to optimize?",
-                    f"What reliability trade-off should an experienced {target_tech} developer consider?",
-                ),
-            )
-            fallback_stage = min(max(question_sequence, 0), len(fallback_questions) - 1)
-            return {
-                "topic": f"{target_tech} {progression_stage.replace('_', ' ').title()}",
-                "category": "technology",
-                "question": _choose_unused_question(
-                    list(fallback_questions[fallback_stage]), existing_topics
-                ),
-                "expected_answer": f"A clear {progression_difficulty.lower()}-level explanation relevant to {target_tech}.",
-                "keywords": [target_tech, progression_stage]
-            }
+            # category in ("technology", "skill"):
+            # When dynamic LLM generation is unavailable or offline, return None to allow
+            # SelectionService to retrieve curated technical questions directly from the database (QuestionRepository).
+            return None
 
     def generate_final_report(
         self,

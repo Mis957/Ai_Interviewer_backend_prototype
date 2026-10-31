@@ -12,22 +12,31 @@ class QuestionRepository(BaseRepository[Question]):
     def find_matching_question(
         self,
         technology: str,
-        difficulty: str,
-        excluded_ids: List[str] = None
+        difficulty: Optional[str] = None,
+        excluded_ids: Optional[List[str]] = None,
+        excluded_texts: Optional[List[str]] = None
     ) -> Optional[Question]:
         """
-        Finds an active question matching technology and difficulty that hasn't been asked yet in the current session.
+        Finds an active question matching technology and difficulty from the Question Bank database
+        that hasn't been asked yet in the current session.
         """
-        query = self.db.query(Question).filter(
+        base_query = self.db.query(Question).filter(
             Question.technology.ilike(technology),
-            Question.difficulty.ilike(difficulty),
             Question.active == True
         )
         if excluded_ids:
-            query = query.filter(Question.id.not_in(excluded_ids))
-        
-        # Pick one at random from candidates
-        return query.order_by(func.random()).first()
+            base_query = base_query.filter(Question.id.not_in(excluded_ids))
+        if excluded_texts:
+            base_query = base_query.filter(Question.question.not_in(excluded_texts))
+
+        # First attempt: match requested difficulty if provided
+        if difficulty:
+            diff_match = base_query.filter(Question.difficulty.ilike(difficulty)).order_by(func.random()).first()
+            if diff_match:
+                return diff_match
+
+        # Fallback: pick any unasked question for this technology
+        return base_query.order_by(func.random()).first()
 
     def get_questions_by_technology(self, technology: str) -> List[Question]:
         return self.db.query(Question).filter(Question.technology.ilike(technology), Question.active == True).all()
