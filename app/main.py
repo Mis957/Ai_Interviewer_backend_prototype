@@ -14,8 +14,12 @@ from app.core.database import (
 )
 from app.routers import interview_router, questions_router, analytics_router, resume_router, auth_router
 
-initialize_database_schema(get_active_engine())
 logger = logging.getLogger(__name__)
+
+try:
+    initialize_database_schema(get_active_engine())
+except Exception as error:
+    logger.warning("Database schema initialization encountered a non-fatal issue: %s", error)
 
 
 async def _monitor_database_connection():
