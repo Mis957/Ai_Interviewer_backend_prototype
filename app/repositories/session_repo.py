@@ -16,12 +16,13 @@ class InterviewSessionRepository(BaseRepository[InterviewSession]):
         target_role: Optional[str] = None,
         years_of_experience: Optional[str] = None
     ) -> InterviewSession:
+        diff_val = initial_difficulty.value if hasattr(initial_difficulty, "value") else str(initial_difficulty)
         session = InterviewSession(
             user_id=user_id,
             technology=technology,
             target_role=target_role,
             years_of_experience=years_of_experience,
-            current_difficulty=initial_difficulty,
+            current_difficulty=diff_val,
             status="STARTED",
             total_score=0.0,
             question_count=0
@@ -39,7 +40,8 @@ class InterviewSessionRepository(BaseRepository[InterviewSession]):
         if not session:
             return None
 
-        session.current_difficulty = next_difficulty
+        diff_val = next_difficulty.value if hasattr(next_difficulty, "value") else str(next_difficulty)
+        session.current_difficulty = diff_val
         session.total_score += score_to_add
         session.question_count += 1
         session.updated_at = datetime.now(timezone.utc)
@@ -72,6 +74,7 @@ class InterviewAnswerRepository(BaseRepository[InterviewAnswer]):
         fluency_feedback: Optional[str] = None,
         filler_words_detected: Optional[List[str]] = None
     ) -> InterviewAnswer:
+        diff_val = next_difficulty.value if hasattr(next_difficulty, "value") else str(next_difficulty)
         answer = InterviewAnswer(
             session_id=session_id,
             question_id=question_id,
@@ -86,9 +89,9 @@ class InterviewAnswerRepository(BaseRepository[InterviewAnswer]):
             fluency_feedback=fluency_feedback,
             missing_topics=missing_topics,
             filler_words_detected=filler_words_detected or [],
-            next_difficulty=next_difficulty
+            next_difficulty=diff_val
         )
         return self.add(answer)
 
     def get_answers_for_session(self, session_id: str) -> List[InterviewAnswer]:
-        return self.db.query(InterviewAnswer).filter(InterviewAnswer.session_id == session_id).order_by(InterviewAnswer.evaluated_at.asc()).all()
+        return self.db.query(InterviewAnswer).filter(InterviewAnswer.session_id == session_id).order_by(InterviewAnswer.created_at.asc()).all()

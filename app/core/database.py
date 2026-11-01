@@ -11,7 +11,13 @@ logger = logging.getLogger("uvicorn")
 
 
 def _create_engine(db_url):
-    connect_args = {"check_same_thread": False} if db_url.startswith("sqlite") else {}
+    if db_url.startswith("sqlite"):
+        connect_args = {"check_same_thread": False, "timeout": 15}
+    else:
+        connect_args = {
+            "connect_timeout": 10,
+            "options": "-c statement_timeout=25000 -c lock_timeout=10000"
+        }
     return create_engine(
         db_url,
         connect_args=connect_args,
